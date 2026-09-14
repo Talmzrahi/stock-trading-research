@@ -1,0 +1,10 @@
+finnhub-python
+lxml
+numpy
+pandas
+requests
+scipy
+statsmodels
+torch
+transformers
+yfinance
