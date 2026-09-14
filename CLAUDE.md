@@ -6,20 +6,34 @@ Full context, phased plan, and the reasoning behind current priorities: see
 
 ## Current phase
 
-Phase 1 — validating the core hypothesis (VIX-regime + earnings-beat signal) with a
-real backtest, before building any more architecture on top of it.
+Phase 1 is complete. **The core VIX + earnings-beat hypothesis was tested and
+rejected** (interaction ~0 across 42,191 events). PEAD is confirmed but thin
+(+0.124pp/5d, ~2bps net of costs). The fusion thesis is untested — its 12-month sample
+failed a positive control. No phase is currently in flight; see ROADMAP.md for the open
+options and don't assume the original hypothesis is still live.
 
 ## What exists
 
 - `Main.py` — news sentiment backfill: Finnhub company news -> 3-model NLP ensemble
   (FinBERT / fintone / Twitter-RoBERTa) -> exponential time-decay weighting -> weekly
   sentiment scores in SQLite (`data/sentiment_history.db`). Run with
-  `python Main.py` after setting `FINNHUB_API_KEY`.
+  `python Main.py` after setting `FINNHUB_API_KEY`. Note this pipeline has never been
+  run for real — the research work below uses its own tables.
 - `Dataframe.py` — exports the `weekly_summary` table to CSV.
+- `research/` — the Phase 1 work: `ingest.py` (prices/VIX/EPS), `backtest.py` (the
+  hypothesis test), `sentiment_events.py` (pre-earnings news scoring), `fusion_test.py`,
+  `archive.py` (export/restore the perishable data).
 
-Nothing else from the original vision (numerical/financials stream, non-standard
-signals, fusion layer, regime/ranking/allocation/execution, scheduling) exists in code
-yet — see ROADMAP.md for sequencing.
+Not built: numerical/financials stream beyond EPS, non-standard signals, fusion layer,
+regime/ranking/allocation/execution, scheduling.
+
+## Data
+
+`data/research.db` (~183MB, gitignored) holds prices, VIX, earnings and 41,569 scored
+news articles. Prices/VIX/earnings are re-downloadable; **the news articles are not** —
+Finnhub's free window is a rolling ~12 months, so they age out permanently. They are
+archived to `data_archive/*.csv.gz` (committed); restore with
+`python research/archive.py restore`, then rerun `research/ingest.py` for prices/VIX.
 
 ## Conventions
 

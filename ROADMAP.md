@@ -1,10 +1,13 @@
 # Roadmap
 
 Trading system that fuses numerical data, non-standard/alternative signals, and news
-sentiment to trade the gap between market sentiment and company fundamentals. Full
-concept: the flagship idea is that when macro fear is high (VIX well above its trailing
-average) and a company beats both earnings and revenue estimates, the market is too
-busy being afraid to price the good news in — creating a short-window mispricing.
+sentiment to trade the gap between market sentiment and company fundamentals.
+
+The original flagship idea was that when macro fear is high (VIX well above its
+trailing average) and a company beats earnings, the market is too busy being afraid to
+price the good news in. **That hypothesis was tested and rejected** — see Phase 1 below
+for the numbers. The broader fusion thesis (cross-referencing streams to find where
+they disagree) is untested rather than disproven, and remains the more promising idea.
 
 This file is the source of truth for sequencing. Update it as phases complete or
 priorities change; don't let it go stale.
@@ -38,36 +41,105 @@ the original architecture exists in code yet: no numerical/financials stream, no
 non-standard signals, no fusion layer, no regime/ranking/allocation/execution, no
 scheduling.
 
-## Phase 1 — Validate the core hypothesis (current)
+## Phase 1 — Validate the core hypothesis — DONE (2026-09-14)
 
-Goal: reproduce the VIX-regime + earnings-beat signal as real, runnable, testable code
-— not just a claim — before anything else gets built on top of it.
+Built: [research/ingest.py](research/ingest.py) (S&P 500 prices, VIX, ~20y EPS
+estimate/actual -> SQLite), [research/backtest.py](research/backtest.py) (the test),
+[research/sentiment_events.py](research/sentiment_events.py) (pre-earnings news
+sentiment), [research/fusion_test.py](research/fusion_test.py),
+[research/archive.py](research/archive.py).
 
-1. **Historical data ingestion**
-   - OHLCV price history for the stock universe — yfinance (free, no key)
-   - VIX historical series + trailing average — yfinance `^VIX` or FRED `VIXCLS` (free)
-   - Historical earnings surprises (EPS + revenue, actual vs. estimate) — Finnhub
-     earnings-surprises endpoint first (key already in hand), yfinance earnings history
-     as a fallback if free-tier limits bite
-   - Store alongside the existing sentiment DB (SQLite) — no new infra needed yet
-2. **Signal construction** — regime flag (VIX vs. trailing average, thresholded),
-   beat flag (EPS actual > estimate AND revenue actual > estimate), combined into an
-   event list of `(stock, date, regime_flag, beat_flag)`.
-3. **Backtest engine** — forward returns at multiple horizons (1/3/5/10 trading days)
-   from each event, compared across: regime+beat vs. beat-only vs. regime-only vs.
-   baseline. Robustness battery:
-   - out-of-sample holdout (time-based split, not random)
-   - permutation testing (null distribution from shuffled event dates/labels)
-   - regression controls (isolate the interaction effect from a plain beat effect and
-     market/sector beta)
-   - transaction-cost adjustment (realistic slippage/commission haircut)
-4. **Decision point** — if the signal holds up, it becomes the flagship signal driving
-   Phase 2. If it doesn't reproduce, that's the moment to find out and revisit, before
-   more is built on it.
+### Result 1 — the core hypothesis is REJECTED
 
-## Phase 2 — Minimal paper-trading loop
+Tested on 42,191 earnings events, 504 stocks, 2002-2026. The hypothesis needs beats to
+be rewarded *extra* during elevated VIX, which is the beat x elevated interaction:
 
-Goal: take the validated signal from a backtest to a running simulated system.
+| horizon | interaction | p     |
+|---------|-------------|-------|
+| 1d      | +0.013pp    | 0.846 |
+| 3d      | +0.074pp    | 0.502 |
+| 5d      | +0.009pp    | 0.939 |
+| 10d     | -0.051pp    | 0.767 |
+
+Zero at every horizon, and across all 12 beat/VIX threshold combinations p ran
+0.344-0.975 with signs scattered around zero. With 42k events this is a precisely
+estimated zero, not an underpowered null.
+
+What is actually there are two **additive**, not synergistic, effects:
+
+- **PEAD (plain earnings drift): +0.124pp at 5d, p=0.003 — real.**
+- **VIX regime effect: ~+0.23pp at 5d — real in-sample, but see the caveat below.**
+- **Their interaction: +0.009pp, p=0.939 — zero.**
+
+Elevated VIX lifted beats (+0.239pp) and non-beats (+0.229pp) essentially equally, so
+the earnings filter is redundant with the VIX filter. The proposed mechanism — good
+news going unpriced because the market is distracted by fear — is not visible.
+
+### Result 2 — the fusion thesis is UNTESTED, not disproven
+
+Scored 41,569 news articles published strictly before 1,940 earnings events, then
+tested whether numbers/narrative disagreement predicts drift (direction pre-registered:
+H1 needs a negative beat x sentiment interaction).
+
+5-day interaction: **+0.243pp, 95% CI [-0.269, +0.755]** — indistinguishable from zero,
+and the wrong sign for H1. But the result should not be read either way, because the
+sample fails its positive control: PEAD, which is +0.124pp (p=0.003) over the full
+history, comes out at **-0.285pp (p=0.301)** inside the 12-month news window. A sample
+that cannot reproduce a confirmed stronger effect cannot adjudicate an unconfirmed
+weaker one. The limit is the data window, not the hypothesis.
+
+### Data constraints discovered (expensive to rediscover — check here first)
+
+- **Finnhub free news: rolling ~12 months.** 18 months back returns zero articles. This
+  is what makes the fusion test underpowered, and it means fetched news is
+  **perishable** — hence [research/archive.py](research/archive.py) and `data_archive/`.
+- **Finnhub free earnings: 4 quarters only**, and the historical earnings calendar
+  returns empty. No revenue estimates at all.
+- **yfinance: EPS estimate/actual back to ~2002**, capped at 100 quarters per ticker.
+  Prices and `^VIX` go back to 1980/1990. All free, no key.
+- **Revenue estimates are not available free anywhere** — actuals are (SEC/yfinance),
+  estimates are the paywalled part (IBES/Zacks). So the literal "beats BOTH earnings
+  and revenue" version of the hypothesis was never testable; everything above is
+  EPS-only.
+- Wikipedia's S&P 500 table 403s on urllib's default user-agent; fetch via requests.
+
+### Methodology lessons worth keeping
+
+- **Test the interaction, not the contrast.** "Beats during high VIX vs. beats during
+  normal VIX" reads +0.281pp (p=0.009) while the interaction it gets mistaken for is
+  +0.009pp (p=0.939). The contrast silently includes the regime effect. The same trap
+  appeared again in the sentiment terciles.
+- **Cluster on dates, not events.** VIX regime is a date-level property, so every stock
+  reporting that day shares it; event-level t-tests overstate significance badly.
+- **Survivorship bias is asymmetric.** The universe is today's S&P 500, which inflates
+  the regime effect but cancels in a difference-in-differences. So the null is the
+  trustworthy number here and the positive result is the contaminated one. A
+  point-in-time universe would fix this if the regime effect is ever pursued.
+- **Run a positive control.** Checking whether a known effect (PEAD) shows up in a
+  subsample is what separated "hypothesis is wrong" from "sample can't answer".
+- **Pre-register the direction** when two plausible stories predict opposite signs.
+
+### Where this leaves the project
+
+The one confirmed effect, PEAD, is ~+0.124pp over 5 days — roughly **2bps net** of a
+10bps round-trip cost assumption. That is thin enough that execution quality could
+erase it, which is worth weighing before committing to Phase 2 as originally scoped.
+
+Open options, no decision made yet:
+
+1. **Get multi-year news** and re-run the fusion test — the pipeline is built and
+   validated, only the data is missing. GDELT (BigQuery, needs a Google Cloud account)
+   or a paid provider.
+2. **Try a different attention proxy** — VIX measures market-wide fear, not attention
+   to a given stock. Same-day announcement counts or news volume are closer.
+3. **Build Phase 2 on PEAD** as a thin anchor, accepting the margin is small.
+
+## Phase 2 — Minimal paper-trading loop (blocked on a signal worth trading)
+
+Goal: take a validated signal from a backtest to a running simulated system. Written
+when the VIX hypothesis was expected to supply that signal; it did not. PEAD is the
+only confirmed candidate and its margin is ~2bps net, so decide whether that is worth
+building on before starting this phase.
 
 - Regime score module (from Phase 1's data)
 - Universe ranking: rank the stock list by earnings-surprise magnitude, gated by regime
