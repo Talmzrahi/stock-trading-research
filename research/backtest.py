@@ -137,6 +137,30 @@ def permutation_p(dl, n_perm=N_PERM):
     return obs, float((np.abs(diffs) >= abs(obs)).mean())
 
 
+def interaction(ev, h):
+    """The actual hypothesis test: does beating earnings pay MORE when VIX is
+    elevated, over and above the regime's own effect on all stocks?
+
+    The elevated-vs-normal contrast on beats alone cannot answer this — it
+    conflates the interaction with a regime effect that lifts beats and
+    non-beats alike. The difference-in-differences (this interaction term)
+    isolates it, and as a within-universe difference it is also robust to the
+    survivorship bias in the constituent list.
+    """
+    try:
+        import statsmodels.formula.api as smf
+    except ImportError:
+        return None
+    d = ev.assign(beat_i=ev.beat.astype(int), elev_i=ev.elevated.astype(int),
+                  date_id=ev.entry_date.astype("category").cat.codes)
+    m = smf.ols(f"ret{h} ~ beat_i * elev_i", data=d).fit(
+        cov_type="cluster", cov_kwds={"groups": d.date_id})
+    return {"h": h,
+            "interaction": m.params["beat_i:elev_i"], "p_int": m.pvalues["beat_i:elev_i"],
+            "beat": m.params["beat_i"], "p_beat": m.pvalues["beat_i"],
+            "regime": m.params["elev_i"], "p_regime": m.pvalues["elev_i"]}
+
+
 def contrast(ev, h, label):
     col = f"ret{h}"
     beats = ev[ev.beat]
@@ -178,8 +202,21 @@ def main():
     for (b, e), r in tab.iterrows():
         print(f"  beat={str(b):<5s} elevated={str(e):<5s}  mean={r['mean']*100:+6.3f}%  n={int(r['size']):,}")
 
-    print("\n── PRIMARY TEST: beats in elevated vs normal VIX ──────────────")
-    print("   (date-level inference; p_perm shuffles regime labels across dates)")
+    print("\n── PRIMARY TEST: beat x elevated interaction ──────────────────")
+    print("   H1 needs a POSITIVE interaction: beats rewarded extra during fear.")
+    print("   Decomposed into regime effect, plain beat effect, and interaction.")
+    inter = [interaction(ev, h) for h in HORIZONS]
+    for r in inter:
+        if r is None:
+            print("   statsmodels not installed — skipped")
+            break
+        print(f"   h={r['h']:<3d} interaction={r['interaction']*100:+7.4f}pp p={r['p_int']:.3f}   "
+              f"| beat={r['beat']*100:+6.3f}pp p={r['p_beat']:.3f}   "
+              f"| regime={r['regime']*100:+6.3f}pp p={r['p_regime']:.3f}")
+
+    print("\n── SECONDARY: beats in elevated vs normal VIX ─────────────────")
+    print("   Tradeable contrast, but it CONFLATES the interaction with the")
+    print("   regime effect — do not read it as support for H1 on its own.")
     full = [contrast(ev, h, "full") for h in HORIZONS]
 
     print("\n── OUT-OF-SAMPLE SPLIT ────────────────────────────────────────")
@@ -194,7 +231,8 @@ def main():
 
     print("\n── THRESHOLD SENSITIVITY (5-day, full sample) ─────────────────")
     print("   reporting the whole grid, not the best cell")
-    print(f"   {'beat%':>6s} {'vixZ':>5s} {'diff(pp)':>9s} {'p_perm':>7s} {'dates hi/lo':>13s}")
+    print(f"   {'beat%':>6s} {'vixZ':>5s} {'contrast':>9s} {'p_perm':>7s} "
+          f"{'interact':>9s} {'p_int':>7s} {'dates hi/lo':>13s}")
     for bt in [0.0, 2.0, 5.0]:
         for vz in [0.5, 1.0, 1.5, 2.0]:
             sub = ev.copy()
@@ -203,35 +241,30 @@ def main():
             dl = date_level(sub[sub.beat], "ret5")
             hi, lo = dl[dl.elevated], dl[~dl.elevated]
             if len(hi) < 5 or len(lo) < 5:
-                print(f"   {bt:6.1f} {vz:5.1f} {'--':>9s} {'--':>7s} {f'{len(hi)}/{len(lo)}':>13s}")
+                print(f"   {bt:6.1f} {vz:5.1f} {'--':>9s} {'--':>7s} {'--':>9s} {'--':>7s}"
+                      f" {f'{len(hi)}/{len(lo)}':>13s}")
                 continue
             d, p = permutation_p(dl, n_perm=1000)
-            print(f"   {bt:6.1f} {vz:5.1f} {d*100:+9.3f} {p:7.3f} {f'{len(hi)}/{len(lo)}':>13s}")
-
-    print("\n── REGRESSION WITH INTERACTION (5-day, clustered by date) ─────")
-    try:
-        import statsmodels.formula.api as smf
-        d = ev.assign(beat_i=ev.beat.astype(int), elev_i=ev.elevated.astype(int),
-                      date_id=ev.entry_date.astype("category").cat.codes)
-        m = smf.ols("ret5 ~ beat_i * elev_i", data=d).fit(
-            cov_type="cluster", cov_kwds={"groups": d.date_id})
-        print(f"   interaction coef (beat x elevated) = {m.params['beat_i:elev_i']*100:+.4f}pp  "
-              f"p={m.pvalues['beat_i:elev_i']:.3f}")
-        print(f"   plain beat coef                    = {m.params['beat_i']*100:+.4f}pp  "
-              f"p={m.pvalues['beat_i']:.3f}")
-    except ImportError:
-        print("   statsmodels not installed — skipped")
+            ir = interaction(sub, 5)
+            istr = f"{ir['interaction']*100:+9.3f}" if ir else f"{'--':>9s}"
+            ipstr = f"{ir['p_int']:7.3f}" if ir else f"{'--':>7s}"
+            print(f"   {bt:6.1f} {vz:5.1f} {d*100:+9.3f} {p:7.3f} {istr} {ipstr}"
+                  f" {f'{len(hi)}/{len(lo)}':>13s}")
 
     print("\n" + "═" * 63)
-    sig = [r for r in full if r and r["p_perm"] < 0.05]
-    if sig:
-        print(f"VERDICT: {len(sig)}/{len(HORIZONS)} horizons show p_perm<0.05 before costs.")
-        print("Check whether they survive the OOS split and the sensitivity grid above")
-        print("before treating this as an edge.")
+    hits = [r for r in inter if r and r["p_int"] < 0.05 and r["interaction"] > 0]
+    if hits:
+        print(f"VERDICT: interaction is positive and significant at "
+              f"{len(hits)}/{len(HORIZONS)} horizons — consistent with H1.")
+        print("Confirm it holds across the sensitivity grid and the OOS split.")
     else:
-        print("VERDICT: no horizon reaches p_perm<0.05 at date-level inference.")
-        print("The VIX-conditioning does not add detectable signal beyond plain PEAD")
-        print("in this sample.")
+        print("VERDICT: H1 NOT SUPPORTED. The beat x elevated interaction is not")
+        print("positively significant at any horizon, so beating earnings is not")
+        print("rewarded any more during elevated VIX than at normal times.")
+        print("Any elevated-vs-normal gap in the secondary contrast is a regime")
+        print("effect that lifts beats and non-beats alike, not the mechanism H1")
+        print("proposes — and that regime effect is itself inflated by the")
+        print("survivorship bias in the constituent list.")
 
 
 if __name__ == "__main__":
