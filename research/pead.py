@@ -85,6 +85,34 @@ def build(wide, earn):
     return ev.dropna(subset=["decile"])
 
 
+def apply_pit(conn, ev):
+    """Flag each event with whether the firm was actually in the index then.
+
+    Without this, an S&P 500 backtest silently trades firms years before
+    they joined — and they typically joined *because* they had done well.
+    Only covers 2007+, where the Wikipedia snapshots start.
+    """
+    uni = pd.read_sql_query("SELECT as_of, symbol FROM universe_history", conn)
+    if uni.empty:
+        raise SystemExit("universe_history is empty — run research/universe.py first")
+    uni["as_of"] = pd.to_datetime(uni.as_of)
+    snaps = np.sort(uni.as_of.unique())
+    members = {d: set(g.symbol) for d, g in uni.groupby("as_of")}
+
+    ev = ev[ev.entry_date >= snaps.min()].copy()
+    idx = np.searchsorted(snaps, ev.entry_date.to_numpy(), side="right") - 1
+    ev["pit"] = [s in members[snaps[i]] for s, i in zip(ev.symbol, idx)]
+    return ev
+
+
+def clustered_mean(ev, col):
+    m = ev.groupby("entry_date")[col].mean()
+    if len(m) < 5:
+        return np.nan, np.nan
+    t, p = stats.ttest_1samp(m, 0)
+    return m.mean(), p
+
+
 def date_clustered_diff(ev, col, hi_mask, lo_mask):
     """Collapse to one observation per (date, group) before testing, since
     same-day events share a common market component."""
@@ -149,6 +177,34 @@ def main():
         means = ev.groupby("decile")[f"ret{h}"].mean()
         rho, p = stats.spearmanr(means.index.astype(float), means.values)
         print(f"   h={h:<3} Spearman rho(decile, mean return) = {rho:+.3f}  p={p:.3f}")
+
+    # ── Point-in-time universe ────────────────────────────────────────
+    conn = sqlite3.connect(DB_FILE)
+    pit = apply_pit(conn, ev)
+    conn.close()
+    print("\n── POINT-IN-TIME UNIVERSE (2007+, 60d) ────────────────────────")
+    print(f"   {(~pit.pit).sum():,} of {len(pit):,} events ({(~pit.pit).mean()*100:.1f}%) were firms")
+    print("   NOT yet in the index — they were look-ahead all along.")
+    print(f"   {'':<24}{'today-list':>13}{'point-in-time':>15}{'change':>10}")
+    for lbl, d in [("decile 10 (big beats)", 10), ("decile 5 (middle)", 5),
+                   ("decile 1 (big misses)", 1)]:
+        a, _ = clustered_mean(pit[pit.decile == d], "ret60")
+        b, pb = clustered_mean(pit[(pit.decile == d) & pit.pit], "ret60")
+        print(f"   {lbl:<24}{a*100:>+12.3f}{b*100:>+14.3f}{(b-a)*100:>+10.3f}  p={pb:.3f}")
+
+    print("\n   Stability of decile 10 across eras (point-in-time):")
+    bins = [pd.Timestamp("2006-01-01"), pd.Timestamp("2014-01-01"),
+            pd.Timestamp("2020-01-01"), pd.Timestamp("2027-01-01")]
+    pit["era"] = pd.cut(pit.entry_date, bins=bins,
+                        labels=["2007-2013", "2014-2019", "2020-2026"])
+    for e, g in pit[pit.pit].groupby("era", observed=True):
+        d10, p10 = clustered_mean(g[g.decile == 10], "ret60")
+        d5, _ = clustered_mean(g[g.decile == 5], "ret60")
+        print(f"     {str(e):<11} dec10={d10*100:+7.3f}pp (p={p10:.3f})  "
+              f"dec5={d5*100:+7.3f}pp  spread={(d10-d5)*100:+7.3f}pp  n={len(g):,}")
+
+    print("\n   NOTE: firms DELISTED after failing are still absent — yfinance does")
+    print("   not serve them — so even these numbers remain optimistic.")
 
 
 if __name__ == "__main__":
