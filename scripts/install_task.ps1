@@ -26,7 +26,8 @@ $local = [System.TimeZoneInfo]::ConvertTimeToUtc($etToday, $eastern).ToLocalTime
 
 $action = New-ScheduledTaskAction -Execute $cmd -WorkingDirectory $root
 $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -At $local
-$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 1)
+# 3 hours: with TRADER_BROKER=alpaca the run waits until 15:45 ET to send orders.
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 3)
 
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings `
     -Description "Refresh data, settle fills, submit market-on-close orders, write reports/YYYY-MM-DD.md" -Force | Out-Null

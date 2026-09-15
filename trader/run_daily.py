@@ -19,15 +19,18 @@
 import argparse
 import json
 import math
+import os
 import sys
+import time
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
 
 from . import refresh
 from . import state as st
+from .alpaca import AlpacaBroker
 from .backtest import market_from
 from .config import ROOT, STRATEGY_FILE, load_config
 from .data import RESEARCH_DB, TRADER_DB, connect, load_closes, load_earnings, load_universe
@@ -68,6 +71,8 @@ def parse_args(argv):
     p.add_argument("--full-refresh", action="store_true",
                    help="re-download full price history and every member's earnings")
     p.add_argument("--now", help="override the clock (ET), 'YYYY-MM-DD HH:MM' — for testing")
+    p.add_argument("--broker", choices=["sim", "alpaca"], default=os.environ.get("TRADER_BROKER", "sim"),
+                   help="simulated ledger (default) or Alpaca paper; env TRADER_BROKER sets the default")
     return p.parse_args(argv)
 
 
@@ -119,7 +124,16 @@ def run(args):
     rconn = connect(RESEARCH_DB)
     refresh.init_tables(rconn)
     sconn = st.open_state(TRADER_DB)
-    ledger = st.load_ledger(sconn, cfg)
+    alpaca = args.broker == "alpaca"
+    account_broker = st.get(sconn, "broker", "sim" if st.get(sconn, "inception") else args.broker)
+    if account_broker != args.broker:
+        raise RuntimeError(f"data/trader.db holds a {account_broker} account — archive or delete it "
+                           f"before running with --broker {args.broker}.")
+    if alpaca:
+        ledger = AlpacaBroker(dry_run=args.dry_run, min_order=cfg.min_order)
+        st.load_orders_into(sconn, ledger)
+    else:
+        ledger = st.load_ledger(sconn, cfg)
 
     if args.skip_refresh:
         members = refresh.latest_members(rconn)
@@ -141,11 +155,13 @@ def run(args):
         first = today if is_trading_day(today) else next_trading_day(today)
         st.put(sconn, "inception", first.strftime("%Y-%m-%d"))
         st.put(sconn, "last_settled", cal[cal.searchsorted(first) - 1].strftime("%Y-%m-%d"))
-        st.put(sconn, "initial_capital", cfg.initial_capital)
+        st.put(sconn, "initial_capital", ledger.equity() if alpaca else cfg.initial_capital)
+        st.put(sconn, "broker", args.broker)
         # Reports that were already too late before the account existed aren't news.
         old = market.events.entry_idx < cal.get_loc(first) - cfg.max_late_days
         state.processed.update(market.events.key[old])
-        notes.append(f"Opened the simulated account with {money(cfg.initial_capital)}, first session {first:%Y-%m-%d}.")
+        notes.append(f"Opened the {'Alpaca paper' if alpaca else 'simulated'} account with "
+                     f"{money(float(st.get(sconn, 'initial_capital')))}, first session {first:%Y-%m-%d}.")
     inception = pd.Timestamp(st.get(sconn, "inception"))
     initial = float(st.get(sconn, "initial_capital"))
     last_settled = pd.Timestamp(st.get(sconn, "last_settled"))
@@ -154,6 +170,8 @@ def run(args):
     # ── Settle everything whose close is known ────────────────────────
     actions = refresh.load_actions(rconn)
     actions = actions[actions.date >= inception.strftime("%Y-%m-%d")]
+    if alpaca:
+        actions = actions.iloc[0:0]          # Alpaca books dividends and splits itself
     applied = st.applied_actions(sconn)
     new_applied, fills, marks = [], [], []
 
@@ -201,12 +219,15 @@ def run(args):
     decisions, submitted, run_status = [], [], "settled"
     t = cal.get_loc(today) if is_trading_day(today) else None
     unsettled = [o for o in ledger.pending() if pd.Timestamp(o.when) < today]
+    # Sim: the 15:50 market-on-close cutoff. Alpaca: day orders go out at
+    # 15:45 and must be in before 15:55, a few minutes clear of the close.
+    deadline = (moc_cutoff(today) + timedelta(minutes=5 if alpaca else 0)) if t is not None else None
     if t is None:
         status = "Market closed today — no orders."
     elif st.run_status(sconn, today_s) == "decided":
         status = "Today's orders were already decided by an earlier run — this run only settled and reported."
-    elif now > moc_cutoff(today):
-        status = (f"Ran after the {moc_cutoff(today):%H:%M} ET market-on-close cutoff — no orders today. "
+    elif now > deadline:
+        status = (f"Ran after the {deadline:%H:%M} ET order cutoff — no orders today. "
                   f"The next run takes entries up to {cfg.max_late_days} sessions late and sends any due exits.")
     elif unsettled:
         status = "Earlier orders are still unsettled (their closing prices aren't in the data yet) — not trading on a stale book."
@@ -219,8 +240,19 @@ def run(args):
         decisions = eng.step(t, state, ledger, lambda s: prices.at(s, t - 1))
         submitted = ledger.pending()[n0:]
         run_status = "decided"
-        status = (f"{len(submitted)} market-on-close order(s) submitted for the {today:%Y-%m-%d} close."
-                  if submitted else "No trades needed today.")
+        if alpaca and submitted:
+            send_at = moc_cutoff(today) - timedelta(minutes=5)
+            wait = (send_at - now_et()).total_seconds()
+            if wait > 0 and not (args.now or args.dry_run):
+                print(f"Waiting until {send_at:%H:%M} ET to send {len(submitted)} order(s) to Alpaca …", flush=True)
+                time.sleep(wait)
+            ledger.transmit()
+            sent = [o for o in submitted if o.broker_id]
+            status = (f"{len(sent)} of {len(submitted)} market day order(s) sent to Alpaca paper near the close"
+                      + (" (dry run — nothing actually sent)" if args.dry_run else "") + ".")
+        else:
+            status = (f"{len(submitted)} market-on-close order(s) submitted for the {today:%Y-%m-%d} close."
+                      if submitted else "No trades needed today.")
 
     missing_px = [s for s in ledger.holdings() if prices.at(s, cal.get_loc(last_close)) is None]
     if missing_px:
@@ -231,7 +263,7 @@ def run(args):
     if args.dry_run:
         sconn.rollback()
     else:
-        st.save_ledger(sconn, ledger)
+        (st.save_orders if alpaca else st.save_ledger)(sconn, ledger)
         st.save_engine_state(sconn, state, cal, today_s, decisions)
         st.put(sconn, "last_settled", last_settled.strftime("%Y-%m-%d"))
         st.save_marks(sconn, marks)
@@ -276,6 +308,8 @@ def run(args):
 
     ctx = dict(
         dry_run=args.dry_run, now=now, today=today_s, status=status, warnings=warnings, notes=notes,
+        broker_label="Alpaca paper" if alpaca else "simulated broker",
+        order_style="market day orders near the close" if alpaca else "market-on-close",
         cfg=cfg, decisions=decisions, submitted=submitted, fills=fills, positions=positions,
         trades=trades, tripwire=trip, expected_alpha=expected,
         upcoming=refresh.upcoming_reports(rconn, members, today.date()),

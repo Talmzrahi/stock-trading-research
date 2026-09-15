@@ -36,7 +36,7 @@ def render(ctx):
     stop = "off" if not cfg.stop_k else f"{cfg.stop_k:g} daily sd"
     L = [f"# Daily run — {ctx['today']}" + ("  (DRY RUN — nothing saved)" if ctx["dry_run"] else ""),
          "",
-         f"_Run {ctx['now']:%Y-%m-%d %H:%M} ET · simulated broker · entry: top "
+         f"_Run {ctx['now']:%Y-%m-%d %H:%M} ET · {ctx.get('broker_label', 'simulated broker')} · entry: top "
          f"{round((1 - cfg.cutoff) * 100)}% SUE surprise · hold {cfg.hold_days} sessions · "
          f"trailing stop {stop}_",
          "", f"**{ctx['status']}**", ""]
@@ -80,7 +80,7 @@ def render(ctx):
     L.append("")
 
     if ctx["submitted"]:
-        L += ["## Orders submitted (market-on-close)", ""]
+        L += [f"## Orders submitted ({ctx.get('order_style', 'market-on-close')})", ""]
         L += table(["Symbol", "Side", "Amount", "Reason"],
                    [[o.symbol, o.side.upper(), money(o.notional) if o.notional else "all shares",
                      o.tag] for o in ctx["submitted"]])
