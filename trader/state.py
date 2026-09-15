@@ -19,7 +19,7 @@ SCHEMA = """
     CREATE TABLE IF NOT EXISTS holdings (symbol TEXT PRIMARY KEY, qty REAL NOT NULL);
     CREATE TABLE IF NOT EXISTS orders (
         id INTEGER PRIMARY KEY, when_date TEXT, symbol TEXT, side TEXT, qty REAL,
-        notional REAL, tag TEXT, status TEXT, fill_price REAL, fill_qty REAL);
+        notional REAL, tag TEXT, status TEXT, fill_price REAL, fill_qty REAL, broker_id TEXT);
     CREATE TABLE IF NOT EXISTS positions (
         symbol TEXT NOT NULL, kind TEXT NOT NULL,        -- open | pending
         event_key TEXT, entry_date TEXT, due_offset INTEGER, conviction REAL,
@@ -40,9 +40,15 @@ SCHEMA = """
 """
 
 
+ORDER_COLS = "id, when_date, symbol, side, qty, notional, tag, status, fill_price, fill_qty, broker_id"
+
+
 def open_state(path):
     conn = sqlite3.connect(path, timeout=60)
     conn.executescript(SCHEMA)
+    if "broker_id" not in {r[1] for r in conn.execute("PRAGMA table_info(orders)")}:
+        conn.execute("ALTER TABLE orders ADD COLUMN broker_id TEXT")     # pre-Alpaca databases
+        conn.commit()
     return conn
 
 
@@ -61,20 +67,28 @@ def load_ledger(conn, cfg):
     led = Ledger(float(cash) if cash is not None else cfg.initial_capital,
                  cost_model(cfg), cfg.min_order)
     led._pos = {s: q for s, q in conn.execute("SELECT symbol, qty FROM holdings")}
-    led._pending = [Order(*r) for r in conn.execute(
-        """SELECT id, when_date, symbol, side, qty, notional, tag, status, fill_price, fill_qty
-           FROM orders WHERE status='pending' ORDER BY id""")]
-    led._next_id = (conn.execute("SELECT MAX(id) FROM orders").fetchone()[0] or 0) + 1
+    load_orders_into(conn, led)
     return led
+
+
+def load_orders_into(conn, broker):
+    """Pending orders and the next order id, for any broker."""
+    broker._pending = [Order(*r) for r in conn.execute(
+        f"SELECT {ORDER_COLS} FROM orders WHERE status='pending' ORDER BY id")]
+    broker._next_id = (conn.execute("SELECT MAX(id) FROM orders").fetchone()[0] or 0) + 1
+
+
+def save_orders(conn, broker):
+    conn.executemany(f"INSERT OR REPLACE INTO orders ({ORDER_COLS}) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                     [(o.id, o.when, o.symbol, o.side, o.qty, o.notional, o.tag, o.status,
+                       o.fill_price, o.fill_qty, o.broker_id) for o in broker.history + broker.pending()])
 
 
 def save_ledger(conn, led):
     put(conn, "cash", repr(led.cash()))
     conn.execute("DELETE FROM holdings")
     conn.executemany("INSERT INTO holdings (symbol, qty) VALUES (?, ?)", led.holdings().items())
-    conn.executemany("INSERT OR REPLACE INTO orders VALUES (?,?,?,?,?,?,?,?,?,?)",
-                     [(o.id, o.when, o.symbol, o.side, o.qty, o.notional, o.tag, o.status,
-                       o.fill_price, o.fill_qty) for o in led.history + led.pending()])
+    save_orders(conn, led)
 
 
 # ── Engine ────────────────────────────────────────────────────────────

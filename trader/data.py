@@ -33,6 +33,15 @@ def load_earnings(conn):
 
 
 def load_universe(conn):
+    """Snapshots of index membership, with a `firm` identity (SEC CIK) when
+    research/universe_ids.py has been run — see trader/events.py."""
     u = pd.read_sql_query("SELECT as_of, symbol FROM universe_history", conn)
+    has_ids = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='universe_ids'").fetchone()
+    if has_ids:
+        ids = pd.read_sql_query("SELECT as_of, symbol, firm FROM universe_ids WHERE firm IS NOT NULL", conn)
+        if len(ids):
+            u = u.merge(ids, on=["as_of", "symbol"], how="left")
+            u["firm"] = u.firm.fillna("SYM:" + u.symbol)
     u["as_of"] = pd.to_datetime(u["as_of"])
     return u

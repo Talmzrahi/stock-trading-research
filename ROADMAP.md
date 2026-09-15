@@ -203,6 +203,56 @@ day's close). Task Scheduler task "PEAD paper trading daily run" registered for 
 - The tripwire band is built from the history the strategy was selected on, so it is if
   anything optimistic — it fires early, the safe direction.
 
+## Phase 2b — Stress test and survivorship repair (2026-09-15) — GATE NOW FAILS
+
+### Walk-forward on the original (survivors-only) data — [research/stress_test.py](research/stress_test.py)
+
+Re-selecting the configuration each year from prior years only, 2014 → 2026-09:
+
+| | CAGR | max DD |
+|---|---|---|
+| walk-forward selection | +14.55% | -48.3% |
+| hindsight pick (top 2% / stop 8) | +23.50% | -39.4% |
+| baseline (top 10% / no stop) | +14.92% | -48.3% |
+| all 20 configurations averaged | +18.04% | -43.2% |
+| SPY | +13.66% | -33.7% |
+
+Pre-registered verdict PASS (beats SPY), but only **9% of the excess return survives**
+without hindsight; the rule never picked the live configuration in 13 years, and
+averaging all 20 beat it. Costs are not the problem (50bps round trip: 21.7% → 20.2%).
+
+### The universe was survivors-only
+
+`research/ingest.py` fetched data for *today's* constituents only. Of 880 symbols ever
+in the index, 377 had left and had no data, so point-in-time backtests saw 52% of the
+index in 2010 and 78% in 2020.
+
+- [research/ingest_departed.py](research/ingest_departed.py): 100 departed firms
+  recovered (history must cover ≥50% of their member sessions); 207 have no Yahoo data
+  (acquired/delisted — 0 recovered on a one-at-a-time retry); 42 tickers now belong to
+  someone else or are truncated; 28 have prices but no earnings.
+- [research/universe_ids.py](research/universe_ids.py): membership matched by SEC CIK
+  through ticker renames (BK→BNY lost 16 years; 59 multi-ticker firms incl. BLL→BALL,
+  ABC→COR), majority CIK per ticker to survive bad revisions, and a departed ticker
+  can't carry its firm forward (AA → Alcoa spin-off). Shared by the gate, backtest and
+  live system via `trader.events.point_in_time`.
+
+### Event gate re-run on the repaired universe: **FAIL**
+
+26,464 point-in-time events, 588 firms, 2010-05 → 2026-06. Top decile 60d
+**+0.767pp net, p=0.063** (was +1.225pp, p=0.003). Eras: 2010-13 +1.50pp (p=0.036),
+2014-19 -0.53pp (p=0.33), 2020-26 +1.54pp (p=0.041). Cutoff grid: top 5% +1.91pp
+(p=0.002), top 3% +1.58pp (p=0.039), top 2% +1.96pp (p=0.052). Inside the top decile,
+the 90th-95th percentile bucket is -0.09pp — the drift lives in the extreme tail, but
+choosing a tighter cutoff now would be post-hoc and unregistered.
+
+Per the pre-registered rule the build stops here. The simulated account keeps running
+(no money at stake); **no real money and no Alpaca switch until a decision is made.**
+Still missing and not fixable for free: 207 acquired/bankrupt firms.
+
+`trader/alpaca.py` (paper-only Alpaca broker, fake-API tested) exists but is not wired
+into `run_daily`.
+
 ## Phase 3 — Add breadth to the fusion layer
 
 Goal: a second signal that passes the gate, so fusion does real work.

@@ -24,6 +24,7 @@ class Order:
     status: str = "pending"       # pending | filled | rejected
     fill_price: float | None = None
     fill_qty: float | None = None
+    broker_id: str | None = None  # the external broker's order id, once sent
 
 
 class Broker(ABC):

@@ -16,6 +16,14 @@
 #  Trailing and quarterly cutoffs agree on 90% of top-decile events.
 #  2014-2019 remains negative (-0.51pp, p=0.31).
 #
+#  RE-RUN (2026-09-15) after repairing the universe — 100 departed firms
+#  added back (research/ingest_departed.py) and membership matched by firm
+#  through ticker renames (research/universe_ids.py): FAIL — top decile
+#  60d +0.767pp net, p=0.063, 1,185 dates. The first PASS leaned on a
+#  survivors-only universe. Tighter cutoffs still show drift (top 5%
+#  +1.91pp p=0.002; top 2% +1.96pp p=0.052) but picking one now is
+#  post-hoc and was not the pre-registered test.
+#
 #  The cutoff grid and within-decile buckets are informational only — the
 #  tighter-cutoff decision is made later on portfolio net total return.
 #
@@ -35,6 +43,8 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+from trader.data import load_universe  # noqa: E402
+from trader.events import point_in_time  # noqa: E402
 from trader.signals.sue import trailing_percentile  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location("pead", Path(__file__).resolve().parent / "pead.py")
@@ -61,11 +71,18 @@ def clustered(g, col, cost=0.0):
 def main():
     conn = sqlite3.connect(pead.DB_FILE)
     wide, _vix, earn = pead.bt.load(conn)
-    ev = pead.apply_pit(conn, pead.build(wide, earn))
+    universe = load_universe(conn)
     conn.close()
+    ev = pead.build(wide, earn)
+    ev = ev[ev.entry_date >= universe.as_of.min()].copy()
+    # Same membership rule as the live system: by firm, through renames.
+    ev["firm"], ev["pit"] = point_in_time(ev.symbol, ev.entry_date, universe)
+    ev["ann_day"] = ev.announced_at.dt.tz_convert("America/New_York").dt.date
+    ev = ev.sort_values(["firm", "ann_day", "symbol"]).drop_duplicates(["firm", "ann_day"])
 
     # Pool = point-in-time members only, matching what the live system sees.
     ev = ev[ev.pit].copy()
+    print(f"Point-in-time member events: {len(ev):,} across {ev.firm.nunique()} firms")
     ev["pctl"] = trailing_percentile(ev.entry_date, ev.sue)
     t = ev[(ev.entry_date >= TEST_START) & ev.pctl.notna()].copy()
     years = (t.entry_date.max() - t.entry_date.min()).days / 365.25

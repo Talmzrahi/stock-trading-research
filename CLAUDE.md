@@ -13,6 +13,12 @@ cash in SPY. The VIX + earnings-beat hypothesis was rejected in Phase 1; the fus
 thesis is still untested, so sentiment is not in the system. ROADMAP.md has the results,
 the decisions behind them, and known gaps.
 
+**Caution (2026-09-15):** after repairing the survivors-only universe (departed firms +
+ticker renames), the pre-registered event gate FAILS (top decile 60d +0.767pp, p=0.063)
+and walk-forward selection kept only 9% of the excess return. The simulated account is
+still running; no real money or Alpaca switch until the owner decides — see ROADMAP.md
+Phase 2b.
+
 **The validation gate is mandatory**: any new signal, exit, or sizing rule must pass the
 event-level gate (`research/pead_trailing.py` pattern) and the portfolio gate
 (`research/portfolio_gate.py`, selection rule pre-registered in its header) before it

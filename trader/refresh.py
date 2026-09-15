@@ -49,6 +49,9 @@ SCHEMA = """
     CREATE TABLE IF NOT EXISTS corporate_actions (
         symbol TEXT NOT NULL, date TEXT NOT NULL, kind TEXT NOT NULL, value REAL NOT NULL,
         PRIMARY KEY (symbol, date, kind));
+    CREATE TABLE IF NOT EXISTS universe_ids (
+        as_of TEXT NOT NULL, symbol TEXT NOT NULL, name TEXT, cik TEXT, firm TEXT,
+        PRIMARY KEY (as_of, symbol));
     CREATE TABLE IF NOT EXISTS refresh_log (kind TEXT PRIMARY KEY, at TEXT NOT NULL);
 """
 
@@ -69,10 +72,17 @@ def mark_done(conn, kind, now):
 
 # ── Universe ──────────────────────────────────────────────────────────
 def current_sp500():
+    """Current constituents: symbol, name, and SEC CIK (the firm identity
+    that survives ticker renames)."""
     html = requests.get(WIKI_URL, headers=USER_AGENT, timeout=30).text
     table = pd.read_html(StringIO(html))[0]
-    syms = table["Symbol"].astype(str).str.strip().str.upper().str.replace(".", "-", regex=False)
-    return sorted(set(syms))
+    df = pd.DataFrame({
+        "symbol": table["Symbol"].astype(str).str.strip().str.upper().str.replace(".", "-", regex=False),
+        "name": table["Security"].astype(str),
+        "cik": pd.to_numeric(table["CIK"], errors="coerce").map(
+            lambda x: f"{int(x):010d}" if pd.notna(x) else None),
+    })
+    return df.drop_duplicates("symbol").sort_values("symbol")
 
 
 def latest_members(conn):
@@ -83,13 +93,17 @@ def latest_members(conn):
 def refresh_universe(conn, now, every_days=7):
     if not due(conn, "universe", every_days, now):
         return None
-    syms = current_sp500()
-    if len(syms) < 450:
-        raise RuntimeError(f"parsed only {len(syms)} symbols from Wikipedia")
-    prev, new = set(latest_members(conn)), set(syms)
+    table = current_sp500()
+    if len(table) < 450:
+        raise RuntimeError(f"parsed only {len(table)} symbols from Wikipedia")
+    prev, new = set(latest_members(conn)), set(table.symbol)
     if new != prev:
+        as_of = now.date().isoformat()
         conn.executemany("INSERT OR IGNORE INTO universe_history (as_of, symbol) VALUES (?,?)",
-                         [(now.date().isoformat(), s) for s in syms])
+                         [(as_of, s) for s in table.symbol])
+        conn.executemany(
+            "INSERT OR REPLACE INTO universe_ids (as_of, symbol, name, cik, firm) VALUES (?,?,?,?,?)",
+            [(as_of, r.symbol, r.name, r.cik, r.cik or f"SYM:{r.symbol}") for r in table.itertuples()])
     mark_done(conn, "universe", now)
     return {"added": sorted(new - prev), "removed": sorted(prev - new)}
 

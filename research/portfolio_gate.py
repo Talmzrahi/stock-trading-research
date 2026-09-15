@@ -41,20 +41,16 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from trader.backtest import ERAS, cagr, load_market, run, summarize  # noqa: E402
+sys.path.insert(0, str(ROOT / "research"))
+from selection import CUTOFFS, STOPS, select  # noqa: E402
+from trader.backtest import ERAS, load_market, run, summarize  # noqa: E402
 from trader.config import Config, save_strategy  # noqa: E402
 from trader.engine import Engine  # noqa: E402
 from trader.monitor import bootstrap_band, first_fire  # noqa: E402
 
-CUTOFFS   = [0.90, 0.95, 0.97, 0.98]
-STOPS     = [None, 3, 5, 8, 12]
 ERA_NAMES = [e[0] for e in ERAS]
 BAND_FILE = ROOT / "config" / "tripwire_band.csv"
 REPORTS   = ROOT / "reports"
-
-
-def no_worse_in_eras(cand, ref, need=2):
-    return sum(cand[f"cagr_{e}"] >= ref[f"cagr_{e}"] for e in ERA_NAMES) >= need
 
 
 def label(c, k):
@@ -82,29 +78,12 @@ def main():
                   f"{s['mean_alpha']*100:>+7.2f}%{s['avg_positions']:>6.1f}  "
                   + "  ".join(f"{s[f'cagr_{e}']*100:>+8.2f}%" for e in ERA_NAMES), flush=True)
 
-    # ── Step 1: cutoff ────────────────────────────────────────────────
-    ref = S[(0.90, None)]
-    qualifying = []
-    for i, c in enumerate(CUTOFFS[1:], start=1):
-        chain = all(S[(cc, None)]["cagr"] > ref["cagr"] for cc in CUTOFFS[1:i + 1])
-        if chain and no_worse_in_eras(S[(c, None)], ref):
-            qualifying.append(c)
-    cutoff = max(qualifying, key=lambda c: S[(c, None)]["cagr"]) if qualifying else 0.90
+    ranked = {key: {"cagr": s["cagr"], "eras": [s[f"cagr_{e}"] for e in ERA_NAMES]}
+              for key, s in S.items()}
+    cutoff, stop_k, qualifying, qual_k = select(ranked)
     print(f"\nStep 1 — qualifying tighter cutoffs: "
           f"{[f'top {round((1-c)*100)}%' for c in qualifying] or 'none'}"
           f"  →  cutoff = top {round((1 - cutoff) * 100)}%")
-
-    # ── Step 2: stop ──────────────────────────────────────────────────
-    ref2 = S[(cutoff, None)]
-    ks = STOPS[1:]
-    qual_k = []
-    for j, k in enumerate(ks):
-        nbrs = [ks[x] for x in (j - 1, j + 1) if 0 <= x < len(ks)]
-        if (S[(cutoff, k)]["cagr"] > ref2["cagr"]
-                and all(S[(cutoff, n)]["cagr"] > ref2["cagr"] for n in nbrs)
-                and no_worse_in_eras(S[(cutoff, k)], ref2)):
-            qual_k.append(k)
-    stop_k = max(qual_k, key=lambda k: S[(cutoff, k)]["cagr"]) if qual_k else None
     print(f"Step 2 — qualifying stops at that cutoff: {qual_k or 'none'}  →  stop = {stop_k}")
 
     chosen = replace(base, cutoff=cutoff, stop_k=stop_k)

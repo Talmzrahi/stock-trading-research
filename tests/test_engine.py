@@ -126,6 +126,39 @@ class PartsTest(unittest.TestCase):
         self.assertTrue(ev.loc["AAA", "pit"])
         self.assertFalse(ev.loc["BBB", "pit"])
 
+    def test_membership_follows_firm_through_a_ticker_rename(self):
+        cal = trading_days("2024-01-02", "2024-03-29")
+        closes = pd.DataFrame({"NEW": 10.0, "GOOG": 5.0, "GOOGL": 5.0}, index=cal)
+        at = lambda d: pd.Timestamp(f"{d} 07:00").tz_localize("America/New_York").tz_convert("UTC")
+        earn = pd.DataFrame({
+            "symbol": ["NEW", "GOOG", "GOOGL"],
+            "announced_at": [at("2024-01-10"), at("2024-01-11"), at("2024-01-11")],
+            "eps_estimate": [1.0] * 3, "eps_actual": [1.2] * 3})
+        # Data lives under NEW; in January the firm was listed as OLD.
+        uni = pd.DataFrame({
+            "as_of": pd.to_datetime(["2024-01-01"] * 3 + ["2024-03-01"] * 3),
+            "symbol": ["OLD", "GOOG", "GOOGL", "NEW", "GOOG", "GOOGL"],
+            "firm": ["C1", "C2", "C2", "C1", "C2", "C2"]})
+        ev = build_events(earn, cal, closes, uni)
+        self.assertTrue(ev.set_index("symbol").loc["NEW", "pit"])
+        self.assertEqual(len(ev[ev.firm == "C2"]), 1)      # share classes: one event
+        without_ids = build_events(earn, cal, closes, uni.drop(columns="firm"))
+        self.assertFalse(without_ids.set_index("symbol").loc["NEW", "pit"])
+
+    def test_departed_ticker_does_not_carry_its_firm_forward(self):
+        cal = trading_days("2023-01-03", "2025-12-31")
+        closes = pd.DataFrame({"AA": 10.0}, index=cal)
+        at = lambda d: pd.Timestamp(f"{d} 07:00").tz_localize("America/New_York").tz_convert("UTC")
+        earn = pd.DataFrame({"symbol": ["AA", "AA"],
+                             "announced_at": [at("2023-04-12"), at("2025-10-15")],
+                             "eps_estimate": [1.0, 1.0], "eps_actual": [1.1, 1.1]})
+        # AA was the member through 2023; the same firm is listed as HWM later,
+        # but AA's 2025 data belongs to a spin-off that isn't in the index.
+        uni = pd.DataFrame({"as_of": pd.to_datetime(["2023-01-01", "2024-06-01"]),
+                            "symbol": ["AA", "HWM"], "firm": ["C9", "C9"]})
+        ev = build_events(earn, cal, closes, uni).sort_values("entry_date")
+        self.assertEqual(ev.pit.tolist(), [True, False])
+
     def test_fusion_single_signal_passthrough(self):
         class Const(Signal):
             name = "c"

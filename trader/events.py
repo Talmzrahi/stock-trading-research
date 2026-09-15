@@ -47,9 +47,34 @@ def build_events(earn, calendar, closes, universe):
     ev["price"] = vals[ev.signal_idx.to_numpy(), ev.symbol.map(col_of).to_numpy()]
     ev = ev[ev.price > 0].copy()
 
-    groups = universe.groupby("as_of")["symbol"].apply(set).sort_index()
-    snaps, members = pd.DatetimeIndex(groups.index), groups.tolist()
-    k = snaps.searchsorted(ev.entry_date.to_numpy(), side="right") - 1
-    ev["pit"] = [i >= 0 and s in members[i] for s, i in zip(ev.symbol, k)]
-
+    ev["firm"], ev["pit"] = point_in_time(ev.symbol, ev.entry_date, universe)
+    # One event per firm per day, so share classes (GOOG/GOOGL) count once.
+    ev = ev.sort_values(["firm", "ann_date", "symbol"]).drop_duplicates(["firm", "ann_date"])
     return ev.sort_values(["entry_idx", "symbol"]).reset_index(drop=True)
+
+
+def point_in_time(symbols, dates, universe):
+    """(firm, was-a-member) for each (symbol, date).
+
+    Membership is matched by firm when the universe carries firm identity,
+    so a ticker rename (BK → BNY) doesn't turn the firm's pre-rename history
+    into non-member events. A ticker carries its firm backwards without
+    limit but forwards only a year past its last listing: after a ticker
+    leaves, its data may belong to someone else (AA's history runs on into
+    the 2016 Alcoa spin-off, not the firm that was the member).
+    Shared by the live system and the research gates so all three agree.
+    """
+    symbols, dates = list(symbols), pd.DatetimeIndex(dates)
+    if "firm" in universe.columns:
+        latest = universe.sort_values("as_of").drop_duplicates("symbol", keep="last")
+        firm_of = dict(zip(latest.symbol, latest.firm))
+        until = {s: d + pd.Timedelta(days=365) for s, d in zip(latest.symbol, latest.as_of)}
+        firms = [firm_of[s] if s in firm_of and d <= until[s] else f"SYM:{s}"
+                 for s, d in zip(symbols, dates)]
+        groups = universe.groupby("as_of")["firm"].apply(set).sort_index()
+    else:
+        firms = symbols
+        groups = universe.groupby("as_of")["symbol"].apply(set).sort_index()
+    snaps, members = pd.DatetimeIndex(groups.index), groups.tolist()
+    k = snaps.searchsorted(dates, side="right") - 1
+    return firms, [i >= 0 and f in members[i] for f, i in zip(firms, k)]
