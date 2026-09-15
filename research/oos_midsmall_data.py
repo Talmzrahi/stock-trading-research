@@ -195,6 +195,53 @@ def member_spans(conn):
     return g
 
 
+def evaluate_symbol(conn, sym, span, closes):
+    """Coverage verdict for one symbol; writes prices when it is kept."""
+    if closes is not None and len(closes):
+        idx = closes.index.tz_localize(None) if closes.index.tz is not None else closes.index
+        closes = closes.set_axis(idx.normalize())
+    if closes is None or closes.empty:
+        status, cov = "no_prices", 0.0
+    else:
+        sessions = trading_days(span["min"], span["until"])
+        cov = float(closes.index.isin(sessions).sum() / max(len(sessions), 1))
+        status = "prices_ok" if (span["current"] or cov >= MIN_COVERAGE) else "reused_or_partial"
+    if status == "prices_ok":
+        conn.executemany("INSERT OR IGNORE INTO prices VALUES (?,?,?)",
+                         [(sym, d.strftime("%Y-%m-%d"), float(c)) for d, c in closes.items()])
+    conn.execute("INSERT OR REPLACE INTO coverage VALUES (?,?,?,?,?,?,?,?,?)", (
+        sym, span["min"], span["until"], int(span["current"]),
+        None if closes is None or closes.empty else str(closes.index.min().date()),
+        None if closes is None or closes.empty else str(closes.index.max().date()),
+        cov, None, status))
+    return status
+
+
+def retry_prices(conn, spans):
+    """Batch downloads get throttled (Yahoo 401 'Invalid Crumb'), and a
+    missing small-cap is exactly the survivorship hole this test avoids —
+    so every empty or short verdict is re-fetched one at a time."""
+    todo = [r[0] for r in conn.execute(
+        "SELECT symbol FROM coverage WHERE status IN ('no_prices','reused_or_partial')")
+        if r[0] in spans.index]
+    print(f"  retrying {len(todo)} symbols one at a time")
+    recovered = 0
+    for n, sym in enumerate(todo, 1):
+        try:
+            h = yf.Ticker(sym).history(start=PRICE_START, auto_adjust=True)
+            closes = h["Close"].dropna() if len(h) else None
+        except Exception:
+            closes = None
+        if evaluate_symbol(conn, sym, spans.loc[sym], closes) == "prices_ok":
+            recovered += 1
+        if n % 50 == 0:
+            conn.commit()
+            print(f"    {n}/{len(todo)} retried, {recovered} recovered", flush=True)
+        time.sleep(1.5)
+    conn.commit()
+    print(f"  recovered {recovered} of {len(todo)}")
+
+
 def fetch_prices(conn, spans):
     done = {r[0] for r in conn.execute("SELECT symbol FROM coverage")}
     todo = [s for s in list(spans.index) if s not in done]
@@ -218,24 +265,12 @@ def fetch_prices(conn, spans):
                 closes = closes.set_axis(idx.normalize())
             if sym in ETFS:
                 if closes is not None and len(closes):
+                    idx = closes.index.tz_localize(None) if closes.index.tz is not None else closes.index
+                    closes = closes.set_axis(idx.normalize())
                     conn.executemany("INSERT OR IGNORE INTO prices VALUES (?,?,?)",
                                      [(sym, d.strftime("%Y-%m-%d"), float(c)) for d, c in closes.items()])
                 continue
-            span = spans.loc[sym]
-            if closes is None or closes.empty:
-                status, cov = "no_prices", 0.0
-            else:
-                sessions = trading_days(span["min"], span["until"])
-                cov = float(closes.index.isin(sessions).sum() / max(len(sessions), 1))
-                status = "prices_ok" if (span["current"] or cov >= MIN_COVERAGE) else "reused_or_partial"
-            if status == "prices_ok":
-                conn.executemany("INSERT OR IGNORE INTO prices VALUES (?,?,?)",
-                                 [(sym, d.strftime("%Y-%m-%d"), float(c)) for d, c in closes.items()])
-            conn.execute("INSERT OR REPLACE INTO coverage VALUES (?,?,?,?,?,?,?,?,?)", (
-                sym, span["min"], span["until"], int(span["current"]),
-                None if closes is None or closes.empty else str(closes.index.min().date()),
-                None if closes is None or closes.empty else str(closes.index.max().date()),
-                cov, None, status))
+            evaluate_symbol(conn, sym, spans.loc[sym], closes)
         conn.commit()
         print(f"    {min(i + 100, len(todo))}/{len(todo)}", flush=True)
         time.sleep(1.0)
@@ -243,7 +278,7 @@ def fetch_prices(conn, spans):
 
 def fetch_earnings(conn):
     todo = conn.execute("SELECT symbol, member_from, member_until, current FROM coverage "
-                        "WHERE status='prices_ok'").fetchall()
+                        "WHERE status='prices_ok' AND n_earnings IS NULL").fetchall()
     print(f"  earnings: {len(todo)} symbols to fetch")
     for n, (sym, lo, hi, current) in enumerate(todo, 1):
         try:
@@ -274,16 +309,21 @@ def fetch_earnings(conn):
 
 
 def main():
+    retry = "--retry-prices" in sys.argv
     DB_FILE.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_FILE, timeout=60)
     conn.executescript(SCHEMA)
-    print("1. Membership snapshots")
-    snapshots(conn)
-    print("2. Firm identity")
-    assign_firms(conn)
+    if not retry:
+        print("1. Membership snapshots")
+        snapshots(conn)
+        print("2. Firm identity")
+        assign_firms(conn)
     spans = member_spans(conn)
     print(f"3. Prices ({len(spans)} symbols ever a member)")
-    fetch_prices(conn, spans)
+    if retry:
+        retry_prices(conn, spans)
+    else:
+        fetch_prices(conn, spans)
     print("4. Earnings")
     fetch_earnings(conn)
     print("\nCoverage:", dict(conn.execute("SELECT status, COUNT(*) FROM coverage GROUP BY status").fetchall()))
