@@ -181,6 +181,10 @@ powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1   # weekdays 1
 Reports land in `reports/YYYY-MM-DD.md` (gitignored); the account lives in
 `data/trader.db` — delete it to restart the paper account.
 
+**Status:** simulated account opened 2026-09-15 with $1,000 (first order: SPY at that
+day's close). Task Scheduler task "PEAD paper trading daily run" registered for weekdays
+14:30 ET. Live data refresh verified end to end the same day.
+
 ### Known gaps
 
 - **Alpaca not integrated.** Checked against Alpaca's docs (2026-09-15): fractional and
