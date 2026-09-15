@@ -7,17 +7,22 @@ Full context, phased plan, and the reasoning behind current priorities: see
 ## Current phase
 
 **Phase 2 is built: a simulated paper-trading loop on one validated signal** —
-post-earnings drift. Buy S&P 500 stocks whose price-scaled EPS surprise is in the top 2%
-of the trailing year, hold 60 sessions or until an 8-sd volatility trailing stop, idle
-cash in SPY. The VIX + earnings-beat hypothesis was rejected in Phase 1; the fusion
+post-earnings drift. Buy S&P 500 stocks whose price-scaled EPS surprise is in the **top
+5%** of the trailing year, hold 60 sessions or until a **12-sd** volatility trailing stop,
+idle cash in SPY. The VIX + earnings-beat hypothesis was rejected in Phase 1; the fusion
 thesis is still untested, so sentiment is not in the system. ROADMAP.md has the results,
 the decisions behind them, and known gaps.
 
-**Caution (2026-09-15):** after repairing the survivors-only universe (departed firms +
-ticker renames), the pre-registered event gate FAILS (top decile 60d +0.767pp, p=0.063)
-and walk-forward selection kept only 9% of the excess return. The simulated account is
-still running; no real money or Alpaca switch until the owner decides — see ROADMAP.md
-Phase 2b.
+**How that cutoff was settled (2026-09-15, ROADMAP Phase 2b/2c):** the original top-decile
+gate failed once the survivors-only universe was repaired (+0.767pp, p=0.063), and the
+tighter cutoffs that looked better were a post-hoc choice. They were re-tested
+out-of-sample on S&P 400/600 stocks, pre-registered first: **PASS, +2.730pp, p=0.0009**.
+The cutoff is therefore fixed by that test, not fitted on S&P 500 data. The effect is
+era-dependent in both samples — expect long flat stretches.
+
+The simulated account runs on this config. **Real money and the Alpaca switch are the
+owner's decisions**, not automatic (Alpaca needs paper keys in ALPACA_API_KEY /
+ALPACA_SECRET_KEY).
 
 **The validation gate is mandatory**: any new signal, exit, or sizing rule must pass the
 event-level gate (`research/pead_trailing.py` pattern) and the portfolio gate

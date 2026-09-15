@@ -246,12 +246,63 @@ index in 2010 and 78% in 2020.
 the 90th-95th percentile bucket is -0.09pp — the drift lives in the extreme tail, but
 choosing a tighter cutoff now would be post-hoc and unregistered.
 
-Per the pre-registered rule the build stops here. The simulated account keeps running
-(no money at stake); **no real money and no Alpaca switch until a decision is made.**
-Still missing and not fixable for free: 207 acquired/bankrupt firms.
+Per the pre-registered rule the build stopped there, pending the out-of-sample test
+below. Still missing and not fixable for free: 207 acquired/bankrupt S&P 500 firms.
 
-`trader/alpaca.py` (paper-only Alpaca broker, fake-API tested) exists but is not wired
-into `run_daily`.
+## Phase 2c — Out-of-sample test PASSES; strategy re-specified (2026-09-15)
+
+Pre-registered in [research/prereg_midsmall.md](research/prereg_midsmall.md) **before any
+S&P 400/600 data was loaded** (commit bc09e15), because the stronger tighter-cutoff
+result on S&P 500 data was noticed after the fact and could not adjudicate itself.
+
+### The test — [research/oos_midsmall.py](research/oos_midsmall.py)
+
+Universe built by [research/oos_midsmall_data.py](research/oos_midsmall_data.py) in its
+own `data/oos_midsmall.db`: 62 quarterly S&P 400 snapshots (2011-2026) and 32 of the
+S&P 600 (2018-2026, the page's whole life), 1,915 tickers ever a member, firm identity by
+CIK, data for departed tickers kept only where history covers ≥50% of their member
+sessions. 1,176 symbols usable; 543 have no Yahoo data at all (SIVB, IDTI, WWAV … —
+genuinely delisted, confirmed by direct checks), so this sample is still survivor-tilted.
+
+**PASS: top 5% of trailing SUE, 60 sessions, net 20bps, vs IJH/IJR — +2.730pp,
+p=0.0009**, 1,480 events on 748 dates, 1,152 firms.
+
+| cut | n | vs ETF | @40bps | vs SPY |
+|---|---|---|---|---|
+| top 10% | 2,946 | +2.605pp (p=0.008) | +2.405pp | +1.930pp (p=0.058) |
+| top 5% | 1,480 | +2.730pp (p=0.001) | +2.530pp | +2.140pp (p=0.016) |
+| top 3% | 908 | +3.590pp (p=0.001) | +3.390pp | +3.038pp (p=0.008) |
+| top 2% | 610 | +4.785pp (p=0.001) | +4.585pp | +4.138pp (p=0.007) |
+
+S&P 400 +1.94pp (p=0.045), S&P 600 +3.59pp (p=0.003). **Era-dependent again**: by thirds,
++0.78pp (p=0.37), +6.48pp (p=0.001), +0.94pp (p=0.42) — the effect is real but lumpy.
+
+### Re-specification — [research/prereg_portfolio_top5.md](research/prereg_portfolio_top5.md)
+
+Also written before the result was known: cutoff **fixed** at top 5% (not re-optimised),
+only the stop chosen, by the existing neighbour rule, on the repaired S&P 500 universe
+(`python research/portfolio_gate.py 0.95`).
+
+| stop | CAGR | max DD | Sharpe | tr/yr | held |
+|---|---|---|---|---|---|
+| none | +15.11% | -49.2% | 0.76 | 67 | 17.0 |
+| 3 sd | +16.78% | -36.5% | 0.93 | 79 | 7.2 |
+| 5 sd | +14.53% | -39.1% | 0.80 | 72 | 11.3 |
+| 8 sd | +16.62% | -43.9% | 0.84 | 68 | 14.9 |
+| **12 sd (selected)** | **+16.63%** | **-46.0%** | **0.82** | **68** | **16.6** |
+
+3 sd scored highest but its neighbour (5 sd) is worse than no stop, so the robustness
+rule rejected it; 8 sd failed the same way. **Live config: `cutoff=0.95`, `stop_k=12`**
+(config/strategy.json), SPY +13.90% over the same window, +1.76pp alpha per trade.
+
+Walk-forward with the cutoff fixed: **+15.15% vs SPY +13.66%, 51% of the excess return
+survives** (9% when the cutoff was also being fitted). Costs are minor: 50bps round trip
+still gives +15.06%. The tripwire band was rebuilt (1,040 trades); it would have fired
+early from a 2011 or 2020 start, so read it as noisy before ~50 closed trades.
+
+`trader/alpaca.py` is wired into `run_daily --broker alpaca` (paper-only, fake-API
+tested) but switched off: it needs the owner's Alpaca paper keys, and real money remains
+a Phase 4 decision.
 
 ## Phase 3 — Add breadth to the fusion layer
 

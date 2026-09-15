@@ -57,7 +57,8 @@ def label(c, k):
     return f"top {round((1 - c) * 100):>2}%  stop {'—' if k is None else k:>2}"
 
 
-def main():
+def main(cutoffs=None):
+    cutoffs = cutoffs or CUTOFFS
     base = Config()
     print("Loading market …")
     market = load_market(base)
@@ -67,7 +68,7 @@ def main():
     print(f"   {'config':<18}{'CAGR':>8}{'SPY':>8}{'maxDD':>8}{'Sharpe':>8}"
           f"{'tr/yr':>7}{'alpha':>8}{'held':>6}  " + "  ".join(f"{e:>9}" for e in ERA_NAMES))
     S, R = {}, {}
-    for c in CUTOFFS:
+    for c in cutoffs:
         for k in STOPS:
             cfg = replace(base, cutoff=c, stop_k=k)
             res = run(market, cfg, start=start)
@@ -80,7 +81,7 @@ def main():
 
     ranked = {key: {"cagr": s["cagr"], "eras": [s[f"cagr_{e}"] for e in ERA_NAMES]}
               for key, s in S.items()}
-    cutoff, stop_k, qualifying, qual_k = select(ranked)
+    cutoff, stop_k, qualifying, qual_k = select(ranked, cutoffs=cutoffs)
     print(f"\nStep 1 — qualifying tighter cutoffs: "
           f"{[f'top {round((1-c)*100)}%' for c in qualifying] or 'none'}"
           f"  →  cutoff = top {round((1 - cutoff) * 100)}%")
@@ -130,7 +131,7 @@ def main():
 
     grid = {f"cutoff={c},stop={k}": {m: S[(c, k)][m] for m in
             ["cagr", "max_drawdown", "sharpe", "trades_per_year", "mean_alpha"]
-            + [f"cagr_{e}" for e in ERA_NAMES]} for c in CUTOFFS for k in STOPS}
+            + [f"cagr_{e}" for e in ERA_NAMES]} for c in cutoffs for k in STOPS}
     save_strategy(chosen, {
         "selected_on": pd.Timestamp.now().strftime("%Y-%m-%d"),
         "script": "research/portfolio_gate.py",
@@ -143,4 +144,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # e.g. `python research/portfolio_gate.py 0.95` fixes the cutoff and leaves
+    # only the stop to choose — see research/prereg_portfolio_top5.md.
+    main([float(x) for x in sys.argv[1:]] or None)

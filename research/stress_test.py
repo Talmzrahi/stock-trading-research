@@ -74,7 +74,8 @@ def label(c, k):
     return f"top {round((1 - c) * 100)}% / stop {'—' if k is None else f'{k:g}'}"
 
 
-def main():
+def main(cutoffs=None):
+    cutoffs = cutoffs or CUTOFFS
     base, live = Config(), load_config()
     live_key = (live.cutoff, live.stop_k)
     print("Loading market …", flush=True)
@@ -82,17 +83,17 @@ def main():
     start = Engine(base, market.cal, market.closes, market.events).default_start()
 
     curves = {}
-    for c in CUTOFFS:
+    for c in cutoffs:
         for k in STOPS:
             curves[(c, k)] = run(market, replace(base, cutoff=c, stop_k=k), start=start).equity.equity
             print(f"   ran {label(c, k)}", flush=True)
     rets = {key: eq.pct_change() for key, eq in curves.items()}
-    idx = curves[(CUTOFFS[0], None)].index
+    idx = curves[(cutoffs[0], None)].index
     spy_r = market.closes[base.benchmark].reindex(idx).pct_change()
 
     full = {key: {"cagr": cagr(eq), "eras": [cagr(eq.loc[a:b]) for _, a, b in ERAS]}
             for key, eq in curves.items()}
-    fc, fk, _, _ = select(full)
+    fc, fk, _, _ = select(full, cutoffs=cutoffs)
     ok = (fc, fk) == live_key
     print(f"\nConsistency: shared rule on the full window picks {label(fc, fk)}; "
           f"config/strategy.json has {label(*live_key)} — {'match' if ok else 'MISMATCH'}")
@@ -104,13 +105,13 @@ def main():
         for key, eq in curves.items():
             tr = eq.loc[:f"{year - 1}-12-31"]
             train[key] = {"cagr": cagr(tr), "eras": [cagr(s) for s in thirds(tr)]}
-        c, k, _, _ = select(train)
+        c, k, _, _ = select(train, cutoffs=cutoffs)
         yr = slice(f"{year}-01-01", f"{year}-12-31")
         seg = rets[(c, k)].loc[yr]
         wf.append(seg)
         comp = lambda r: float((1 + r.loc[yr].dropna()).prod() - 1)
         rows.append(dict(year=year, pick=label(c, k), walk_forward=comp(rets[(c, k)]),
-                         hindsight=comp(rets[live_key]), baseline=comp(rets[(0.90, None)]),
+                         hindsight=comp(rets[live_key]), baseline=comp(rets[(cutoffs[0], None)]),
                          spy=comp(spy_r)))
     picks = pd.DataFrame(rows)
 
@@ -118,8 +119,8 @@ def main():
     series = {
         "walk-forward": pd.concat(wf),
         f"hindsight ({label(*live_key)})": rets[live_key].loc[test],
-        "baseline (top 10% / stop —)": rets[(0.90, None)].loc[test],
-        "all 20 averaged (no skill)": pd.DataFrame(rets).mean(axis=1).loc[test],
+        f"baseline ({label(cutoffs[0], None)})": rets[(cutoffs[0], None)].loc[test],
+        "grid averaged (no skill)": pd.DataFrame(rets).mean(axis=1).loc[test],
         "SPY": spy_r.loc[test],
     }
     stats = {}
@@ -161,4 +162,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main([float(x) for x in sys.argv[1:]] or None)
