@@ -11,3 +11,5 @@ smoketest_data/
 
 .env
 .claude/scheduled_tasks.lock
+
+reports/

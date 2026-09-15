@@ -12,8 +12,32 @@
 import numpy as np
 import pandas as pd
 
+from .base import Signal
+
 WINDOW_DAYS = 365     # ~4 quarters of history
 MIN_HISTORY = 200     # below this the percentile is too noisy to trade on
+
+
+class SueSignal(Signal):
+    """Trailing percentile of price-scaled SUE among index members.
+
+    The ranking pool is point-in-time members only — the same pool a live
+    system sees — so non-members get NaN rather than a score.
+    """
+
+    name = "sue"
+
+    def __init__(self, window_days=WINDOW_DAYS, min_history=MIN_HISTORY):
+        self.window_days = window_days
+        self.min_history = min_history
+
+    def score(self, events):
+        raw = sue(events.eps_actual, events.eps_estimate, events.price).to_numpy()
+        pit = events.pit.to_numpy(dtype=bool)
+        out = np.full(len(events), np.nan)
+        out[pit] = trailing_percentile(events.entry_date[pit], raw[pit],
+                                       self.window_days, self.min_history)
+        return pd.Series(out, index=events.index, name=self.name)
 
 
 def sue(eps_actual, eps_estimate, price):
