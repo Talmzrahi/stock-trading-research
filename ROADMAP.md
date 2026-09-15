@@ -183,9 +183,15 @@ Reports land in `reports/YYYY-MM-DD.md` (gitignored); the account lives in
 
 ### Known gaps
 
-- **Alpaca not integrated.** Fractional shares are (as far as known) day-orders only, so
-  a small account can't use market-on-close there — likely a market order just before
-  the close. Verify against Alpaca's docs before building.
+- **Alpaca not integrated.** Checked against Alpaca's docs (2026-09-15): fractional and
+  notional orders accept only `time_in_force` `day` or `gtc`, so **market-on-close
+  (`cls`) is unavailable for a fractional account** — use a day market order a few
+  minutes before the close and track slippage against the close. Accounts under $2,000
+  equity get 1x buying power (no leverage, no shorting), but can trade on unsettled
+  funds, so same-day sells can fund buys as the simulated broker assumes.
+  Sources: [fractional trading](https://docs.alpaca.markets/us/docs/fractional-trading),
+  [margin](https://docs.alpaca.markets/us/docs/margin-and-short-selling),
+  [cash accounts](https://alpaca.markets/support/alpaca-cash-accounts).
 - Scheduled time drifts an hour for the weeks when US and local DST disagree (still
   before the cutoff); 13:00 early-close days run after the 12:50 cutoff and roll a day.
 - Older adjusted prices drift by new dividends between monthly full refreshes (affects
