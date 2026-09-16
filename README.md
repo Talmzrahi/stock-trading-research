@@ -41,8 +41,15 @@ had never touched: **+2.73pp per trade, p=0.0009**.
 
 - The effect is **era-dependent** in every sample: mid/small-cap returns concentrate in
   2019-2022; the S&P 500 version lost to SPY in 2014, 2017-2020, 2023 and 2024.
-- **Delisted firms are still missing** (207 S&P 500, 543 mid/small — Yahoo drops them), so
-  real returns would be somewhat lower than backtested.
+- **The whole edge lives in volatile stocks.** Split by volatility at entry, the top third
+  earns +4.88pp per trade (p=0.001) while the bottom two thirds earn nothing (-0.10pp and
+  +0.49pp). It is the signal rather than beta — in equally volatile stocks, ordinary
+  earnings events earn +0.06pp — but the strategy only works where price swings are large,
+  so drawdowns are the price of entry.
+- **Delisted firms are still missing** (207 S&P 500, 543 mid/small — Yahoo drops them), but
+  the damage is now measured rather than feared: 53% of them were acquired (deals close at
+  a premium, so those are missing *winners*) and only 1% failed outright. Estimated cost
+  to the backtest: **0.3-0.8pp a year**. See [research/survivorship_test.py](research/survivorship_test.py).
 - Paper trading only. Nothing here is investment advice.
 
 ## Layout

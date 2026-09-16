@@ -304,6 +304,73 @@ early from a 2011 or 2020 start, so read it as noisy before ~50 closed trades.
 tested) but switched off: it needs the owner's Alpaca paper keys, and real money remains
 a Phase 4 decision.
 
+## Phase 2d — Survivorship quantified, and where the edge actually lives (2026-09-16)
+
+[research/survivorship_test.py](research/survivorship_test.py) — a diagnostic, not a
+selection rule; it changes nothing in `config/strategy.json`.
+
+### The missing-firms hole is much smaller than assumed
+
+Wikipedia's index-change history (1,223 removals with a stated reason, from
+"Historical components of the S&P 500" plus the 400/600 pages) says *why* each missing
+firm left:
+
+| why they left | share | examples |
+|---|---|---|
+| acquired | 52.7% | ADT, AET, ANDV, BMC, CBE |
+| unknown | 25.6% | ACT, FO, LB, MHP, NU |
+| demoted | 15.2% | BTU, RSH, BBBY, LEG, ADS |
+| restructured | 5.4% | AIV, NE, SVU, ARNC |
+| failed | 1.1% | SBNY, FRC, SIVB |
+
+**Over half were acquisitions**, which close at a premium — those are missing *winners*,
+pushing the bias opposite to the usual worry. Only 1% failed outright. 16.3% of
+member-time is unobservable overall (38% in 2010, 1% in 2026), implying ~203 unseen
+trades against 1,040 observed.
+
+Cost to the backtest, with each position ~4.9% of equity and ~13 unseen trades a year:
+
+| assumption | mean alpha/trade | portfolio drag |
+|---|---|---|
+| like firms that did leave (+0.55pp, empirical) | +1.76 → +1.56pp | **-0.78pp/yr** |
+| mix by stated reason | +1.76 → +1.67pp | **-0.33pp/yr** |
+| every missing trade -25% | +1.76 → -2.61pp | -17.2pp/yr |
+| every missing trade -50% | +1.76 → -6.69pp | -33.3pp/yr |
+
+The last two rows are bounds, not forecasts — they are ruled out by the classification
+above. The honest number is **0.3-0.8pp a year**.
+
+Nor is the edge propped up by doomed firms: trades in companies that left the index
+within a year earned +0.55pp (p=0.44) against +1.94pp (p=0.003) for the rest — less, but
+not negative, and the difference is not significant (p=0.507).
+
+### The real limitation: the edge exists only in volatile stocks
+
+| volatility at entry | n | mean alpha | p |
+|---|---|---|---|
+| low | 347 | -0.10pp | 0.846 |
+| mid | 346 | +0.49pp | 0.830 |
+| **high** | 347 | **+4.88pp** | **0.001** |
+
+Same story by share price (low-priced +3.01pp, p=0.030; high-priced +1.04pp, p=0.46).
+Excess return is measured against SPY, so high-beta names would beat it in a rising
+market regardless — the control rules that out:
+
+| volatility | top 5% events | all other events | difference |
+|---|---|---|---|
+| low | -0.86pp (n=217) | -0.31pp (n=8,605) | -0.55pp (p=0.440) |
+| mid | -0.02pp (n=373) | -0.88pp (n=8,448) | +0.86pp (p=0.204) |
+| high | +3.06pp (n=688) | +0.06pp (n=8,134) | **+3.00pp (p=0.001)** |
+
+Ordinary earnings events in equally volatile stocks earn +0.06pp, so this is the signal,
+not beta. But it means **two thirds of the universe contributes nothing**, and the
+strategy is structurally a bet on volatile names — which is why the drawdown is -46%
+against SPY's -34%.
+
+Tempting and **not adopted**: filtering entries to high-volatility names. That was found
+by looking at the data, so adopting it now would be exactly the post-hoc choice the gate
+exists to prevent. It would need pre-registering and testing on data not used for it.
+
 ## Phase 3 — Add breadth to the fusion layer
 
 Goal: a second signal that passes the gate, so fusion does real work.
