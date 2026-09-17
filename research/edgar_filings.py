@@ -163,11 +163,27 @@ def list_earnings_8ks(cik):
 EXHIBIT = re.compile(r"^EX-99", re.I)
 
 
+SUBMISSION_DOC = re.compile(r"<TYPE>(EX-99[.\d]*)\s*\n(.*?)</DOCUMENT>", re.S | re.I)
+
+
 def press_release(cik, accession):
-    """The EX-99 exhibit, as plain text. The filing index page carries real
-    document types; index.json's `type` field is only an icon name."""
+    """The EX-99 exhibit, as plain text.
+
+    Fetched as the single combined submission file rather than index page
+    plus exhibit. Throughput here is capped by the SEC's request-per-second
+    limit, not by bandwidth, so one larger request beats two smaller ones:
+    it doubles the filings-per-second ceiling for ~36% more bytes. Falls
+    back to the two-request path when the combined file has no EX-99
+    marker."""
     nodash = accession.replace("-", "")
     base = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{nodash}"
+
+    full = get(f"{base}/{accession}.txt")
+    if full is not None:
+        m = SUBMISSION_DOC.search(full.text)
+        if m:
+            return m.group(1), to_text(m.group(2))
+
     page = get(f"{base}/{accession}-index.htm")
     if page is None:
         return None, None
