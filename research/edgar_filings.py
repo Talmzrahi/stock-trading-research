@@ -33,6 +33,7 @@ import sys
 import threading
 import time
 import zlib
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
@@ -58,6 +59,10 @@ from trader.market_calendar import ET  # noqa: E402
 DB_FILE     = ROOT / "data" / "edgar.db"
 START_DATE  = "2010-01-01"
 RATE        = 8.0        # requests/second; the SEC's published ceiling is 10
+WORKERS     = 5          # each filing costs two round trips of ~400ms, so one
+                         # thread idles on latency at ~1 filing/second while the
+                         # rate limit would allow four. Workers share the single
+                         # global limiter, so the SEC's ceiling still holds.
 MATCH_DAYS  = 2          # an 8-K this many days either side of the announcement
 MIN_CHARS   = 400        # shorter than this is a stub, not a press release
 
@@ -300,19 +305,26 @@ def main():
              AND e.accession NOT IN (SELECT accession FROM filings)""").fetchall()
     print(f"\nStage 2 — fetching {len(todo):,} press releases")
     ok = 0
-    for i, (accession, cik, symbol) in enumerate(todo, 1):
+
+    def fetch(row):
+        accession, cik, symbol = row
         doc, text = press_release(cik, accession)
-        meta = conn.execute("SELECT filed_date, accepted_at, items FROM company_8ks WHERE accession=?",
-                            (accession,)).fetchone() or ("", "", "")
-        good = text is not None and len(text) >= MIN_CHARS
-        conn.execute("INSERT OR REPLACE INTO filings VALUES (?,?,?,?,?,?,?,?,?)",
-                     (accession, cik, symbol, meta[0], meta[1], meta[2], doc,
-                      len(text) if text else 0,
-                      zlib.compress(text.encode("utf-8"), 6) if good else None))
-        ok += good
-        if i % 100 == 0 or i == len(todo):
-            conn.commit()
-            print(f"   {i}/{len(todo)}  ({ok} with usable text)", flush=True)
+        return accession, cik, symbol, doc, text
+
+    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+        for i, (accession, cik, symbol, doc, text) in enumerate(pool.map(fetch, todo), 1):
+            meta = conn.execute(
+                "SELECT filed_date, accepted_at, items FROM company_8ks WHERE accession=?",
+                (accession,)).fetchone() or ("", "", "")
+            good = text is not None and len(text) >= MIN_CHARS
+            conn.execute("INSERT OR REPLACE INTO filings VALUES (?,?,?,?,?,?,?,?,?)",
+                         (accession, cik, symbol, meta[0], meta[1], meta[2], doc,
+                          len(text) if text else 0,
+                          zlib.compress(text.encode("utf-8"), 6) if good else None))
+            ok += good
+            if i % 250 == 0 or i == len(todo):
+                conn.commit()
+                print(f"   {i}/{len(todo)}  ({ok} with usable text)", flush=True)
     conn.commit()
 
     have = conn.execute("SELECT COUNT(*) FROM filings WHERE body IS NOT NULL").fetchone()[0]
