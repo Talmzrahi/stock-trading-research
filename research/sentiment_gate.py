@@ -63,6 +63,9 @@ def build_panel(cfg):
     b = col[cfg.benchmark]
     ev["fwd"] = (px[x, c] / px[e, c] - 1) - (px[x, b] / px[e, b] - 1)
     ev = ev[np.isfinite(ev.fwd)]
+    # The signal stores its percentile, not the raw surprise; the baseline
+    # model wants both, and it is the same price-scaled definition.
+    ev["sue"] = (ev.eps_actual - ev.eps_estimate) / ev.price
 
     conn = sqlite3.connect(f"file:{EDGAR_DB}?mode=ro", uri=True, timeout=60)
     links = pd.read_sql_query(
@@ -85,7 +88,8 @@ def fit_ridge(X, y, alpha=1.0):
     sd = np.where(sd > 0, sd, 1.0)
     Z = np.column_stack([(X - mu) / sd, np.ones(len(X))])
     A = Z.T @ Z + alpha * np.eye(Z.shape[1])
-    A[-1, -1] = 0.0                      # never penalise the intercept
+    A[-1, -1] -= alpha                   # lift the penalty off the intercept,
+                                         # without wiping out its own Z'Z term
     beta = np.linalg.solve(A, Z.T @ y)
     return {"mu": mu, "sd": sd, "beta": beta}
 
@@ -110,7 +114,9 @@ def report_split(panel, model_base, model_text, label):
     score = predict(model_text, X_t)
 
     r = np.corrcoef(score, resid)[0, 1]
-    bands = pd.qcut(score, 5, labels=["lowest", "2", "3", "4", "highest"], duplicates="drop")
+    # Rank before cutting: tied scores otherwise collapse the quantile edges.
+    bands = pd.qcut(pd.Series(score).rank(method="first"), 5,
+                    labels=["lowest", "2", "3", "4", "highest"])
     print(f"\n── {label}: {len(panel):,} events "
           f"({panel.entry_date.min().date()} → {panel.entry_date.max().date()}) ──")
     print(f"   correlation between text score and unexplained return: {r:+.4f}")

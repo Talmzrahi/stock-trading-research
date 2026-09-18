@@ -75,6 +75,44 @@ RANGE   = re.compile(r"\$?\s?\d[\d,.]*\s*(?:to|-|–)\s*\$?\s?\d[\d,.]*")
 NONGAAP = re.compile(r"non-?gaap|adjusted|excluding (?:certain|special)|core (?:earnings|eps)", re.I)
 
 
+HASH_DIM = 1024
+
+
+def hashed_vector(tokens):
+    """A fixed-width bag of words, L2-normalised, so cosine similarity is a
+    dot product. Hashing keeps 26,000 documents in ~100MB instead of holding
+    a full vocabulary per document, and crc32 keeps it reproducible across
+    runs where Python's own hash() would not."""
+    v = np.zeros(HASH_DIM, dtype=np.float32)
+    for t in tokens:
+        v[zlib.crc32(t.encode("utf-8")) % HASH_DIM] += 1.0
+    norm = np.linalg.norm(v)
+    return v / norm if norm else v
+
+
+def language_change(df, vectors):
+    """How much a company rewrote its release since last time.
+
+    Cohen, Malloy & Nguyen (Lazy Prices, JF 2020) found that companies which
+    quietly rewrite their filings go on to underperform the copy-pasters.
+    Shown there on 10-K/10-Q filings, so applying it to 8-K press releases
+    is an extension rather than a replication. Compared both with the prior
+    release and with the same quarter a year earlier, since Q4 releases do
+    not read like Q1 ones.
+    """
+    sim_prev = np.full(len(df), np.nan)
+    sim_year = np.full(len(df), np.nan)
+    for _, idx in df.groupby("cik").groups.items():
+        rows = df.index.get_indexer(idx)
+        order = rows[np.argsort(df.filed_date.values[rows])]
+        for i, pos in enumerate(order):
+            if i >= 1:
+                sim_prev[pos] = float(vectors[pos] @ vectors[order[i - 1]])
+            if i >= 4:
+                sim_year[pos] = float(vectors[pos] @ vectors[order[i - 4]])
+    return sim_prev, sim_year
+
+
 def load_words():
     with gzip.open(WORDS, "rt", encoding="utf-8") as f:
         return {k: set(v) for k, v in json.load(f).items()}
@@ -129,7 +167,7 @@ RAW_COLS = ["n_words", "tone", "neg_share", "pos_share", "guide_share", "guide_d
             "percent_density", "range_count", "uncertainty_share", "litigious_share",
             "weak_modal_share", "strong_modal_share", "nongaap_density", "boiler_share"]
 NORMALISE = ["tone", "neg_share", "guide_dir", "guide_share", "number_density",
-             "nongaap_density", "n_words"]
+             "nongaap_density", "n_words", "sim_prev", "sim_year", "days_since_prev"]
 
 
 def own_history_z(df, cols, min_prior=MIN_PRIOR, window=PRIOR_N):
@@ -184,17 +222,30 @@ def main():
     conn.close()
     print(f"Parsing {len(rows):,} press releases …", flush=True)
 
-    records = []
+    records, vectors = [], []
     for i, (accession, cik, symbol, filed, accepted, body) in enumerate(rows, 1):
         text = zlib.decompress(body).decode("utf-8")
         rec = {"accession": accession, "cik": cik, "symbol": symbol,
                "filed_date": filed, "accepted_at": accepted}
         rec.update(raw_features(text, lex))
         records.append(rec)
+        vectors.append(hashed_vector(TOKEN.findall(split_narrative(text)[0].lower())))
         if i % 2000 == 0:
             print(f"   {i:,}/{len(rows):,}", flush=True)
     df = pd.DataFrame(records)
     df["filed_date"] = pd.to_datetime(df.filed_date)
+    vectors = np.vstack(vectors)
+
+    print("Measuring how much each release was rewritten …")
+    df["sim_prev"], df["sim_year"] = language_change(df, vectors)
+
+    # How late this release is by the company's own standards. Fiscal quarter
+    # ends are not in the filing, but the gap since the company's previous
+    # earnings release is, and a company stretching its usual 91 days is the
+    # same signal.
+    df = df.sort_values(["cik", "filed_date"])
+    df["days_since_prev"] = df.groupby("cik").filed_date.diff().dt.days
+    df = df.reset_index(drop=True)
 
     print("Normalising against each company's own history …")
     df = df.sort_values(["cik", "filed_date"]).reset_index(drop=True)
@@ -212,8 +263,8 @@ def main():
     have = df.tone_z.notna().mean()
     print(f"\n{len(df):,} filings featurised; {have * 100:.0f}% have enough own history "
           f"for a normalised score")
-    print(df[["tone", "tone_z", "guide_dir", "guide_share", "number_density"]]
-          .describe().round(3).to_string())
+    print(df[["tone_z", "guide_dir", "sim_prev", "sim_year", "days_since_prev_z",
+              "nongaap_density_z"]].describe().round(3).to_string())
 
 
 if __name__ == "__main__":
