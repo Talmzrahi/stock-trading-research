@@ -9,9 +9,11 @@ Full context, phased plan, and the reasoning behind current priorities: see
 **Phase 2 is built: a simulated paper-trading loop on one validated signal** —
 post-earnings drift. Buy S&P 500 stocks whose price-scaled EPS surprise is in the **top
 5%** of the trailing year, hold 60 sessions or until a **12-sd** volatility trailing stop,
-idle cash in SPY. The VIX + earnings-beat hypothesis was rejected in Phase 1; the fusion
-thesis is still untested, so sentiment is not in the system. ROADMAP.md has the results,
-the decisions behind them, and known gaps.
+idle cash in SPY. The VIX + earnings-beat hypothesis was rejected in Phase 1. The fusion
+thesis was tested on SEC 8-K earnings-release text and **failed** its one-shot 2020-2026
+holdout (2026-09-18, ROADMAP Phase 3a). Sentiment is not in the system, and that test
+is closed: no retuning, no second look. ROADMAP.md has the results, the decisions behind
+them, and known gaps.
 
 **How that cutoff was settled (2026-09-15, ROADMAP Phase 2b/2c):** the original top-decile
 gate failed once the survivors-only universe was repaired (+0.767pp, p=0.063), and the
@@ -39,7 +41,9 @@ reaches `config/strategy.json`.
 - `Dataframe.py` — exports the `weekly_summary` table to CSV.
 - `research/` — Phase 1 work (`ingest.py`, `backtest.py`, `sentiment_events.py`,
   `fusion_test.py`, `archive.py`), PEAD re-specification (`pead.py`, `universe.py`,
-  `pead_trailing.py`) and the strategy selector (`portfolio_gate.py`).
+  `pead_trailing.py`), the strategy selector (`portfolio_gate.py`), and the v2 sentiment
+  test (`edgar_filings.py` → `data/edgar.db`, `edgar_features.py`, `sentiment_gate.py`;
+  design and result in `design_sentiment_v2.md`).
 - `trader/` — the trading system, one code path for backtest and live: `events.py` →
   `signals/` → `fusion.py` → `exits.py` / `portfolio.py` → `engine.py` → `broker.py`
   (simulated MOC ledger) → `state.py` (`data/trader.db`) → `monitor.py` / `report.py`.

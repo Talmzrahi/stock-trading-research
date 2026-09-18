@@ -3,12 +3,13 @@
 Trading system that fuses numerical data, non-standard/alternative signals, and news
 sentiment to trade the gap between market sentiment and company fundamentals.
 
-**Where it stands (2026-09-15):** a simulated paper-trading loop is built and trades one
+**Where it stands (2026-09-18):** a simulated paper-trading loop is built and trades one
 validated signal — post-earnings drift on unusually large EPS surprises. It is a
 low-frequency, long-only, event-driven strategy: buy S&P 500 stocks whose price-scaled
-surprise is in the top 2% of the trailing year, hold 60 sessions or until a volatility
-trailing stop, keep idle cash in SPY. The original VIX-regime idea was rejected (Phase
-1); sentiment is not in the system because the fusion thesis remains untested.
+surprise is in the top 5% of the trailing year, hold 60 sessions or until a 12-sd
+volatility trailing stop, keep idle cash in SPY. The original VIX-regime idea was
+rejected (Phase 1). The fusion thesis was tested on SEC earnings-release text and
+**failed** its pre-registered holdout (Phase 3a), so sentiment stays out of the system.
 
 This file is the source of truth for sequencing. Update it as phases complete or
 priorities change; don't let it go stale.
@@ -63,7 +64,7 @@ p=0.003) and the VIX regime effect are additive, not synergistic.
 41,569 pre-earnings articles across 1,940 events; 5-day beat x sentiment interaction
 +0.243pp, 95% CI [-0.269, +0.755]. The 12-month sample fails its positive control (PEAD
 comes out -0.285pp inside it), so it cannot adjudicate anything. The limit is the data
-window.
+window. (Later tested properly on 8-K text: FAIL, see Phase 3a.)
 
 ### Data constraints discovered (expensive to rediscover — check here first)
 
@@ -371,6 +372,42 @@ Tempting and **not adopted**: filtering entries to high-volatility names. That w
 by looking at the data, so adopting it now would be exactly the post-hoc choice the gate
 exists to prevent. It would need pre-registering and testing on data not used for it.
 
+## Phase 3a — Fusion test on SEC earnings-release text — FAIL (2026-09-18)
+
+Design, registration and full result: [research/design_sentiment_v2.md](research/design_sentiment_v2.md).
+This replaced v1 news sentiment, which could not be tested on a 12-month window, with the
+8-K press release every company files when it reports. Question: does the company's own
+framing of the quarter predict the 60-session return **that the earnings surprise does
+not already explain**?
+
+- [research/edgar_filings.py](research/edgar_filings.py) — 26,358 releases cached in
+  `data/edgar.db` (97.6% of point-in-time events matched). Not archived; re-downloadable
+  from EDGAR.
+- [research/edgar_features.py](research/edgar_features.py) — eight features: tone vs own
+  norm, three guidance measures, language change vs the previous release and the same
+  quarter last year (*Lazy Prices*), filing latency vs own habit, non-GAAP emphasis.
+- [research/sentiment_gate.py](research/sentiment_gate.py) — ridge on the surprise residual,
+  fitted 2012-2019. The 2020-2026 holdout was read exactly once.
+
+| | train, in-sample | **holdout** |
+|---|---|---|
+| top − bottom text-score quintile | +0.855pp (p=0.009) | **+0.431pp (p=0.384)** |
+| correlation with unexplained return | +0.036 | **+0.003** |
+| top-5% trades, better − worse half | — | **−0.84pp (p=0.618)** |
+
+11,284 holdout events and a clean zero. The in-sample pattern was a fit to noise. The
+fusion thesis on company-authored text is **unsupported**, and it is not retuned.
+
+Five bugs were found and fixed *before* the look (disclosed in the design doc). Any of them
+could have produced a false pass or wasted the holdout: the verdict tests were not
+date-clustered; 1.4% of filings post-dated the trade decision; there was no train/holdout
+embargo; the own-history z-score silently needed 12 prior releases instead of 6; and a zero
+MAD was treated as missing data.
+
+Lesson worth keeping: **check a feature's coverage by group before trusting a sample
+size.** A normaliser that silently returns NaN shrinks the sample without any error, and
+here it did that to a third of events.
+
 ## Phase 3 — Add breadth to the fusion layer
 
 Goal: a second signal that passes the gate, so fusion does real work.
@@ -379,8 +416,10 @@ Goal: a second signal that passes the gate, so fusion does real work.
   portfolio gate before touching `config/strategy.json`.
 - Candidates, free sources only: multi-year news for the fusion test (GDELT); attention
   proxies (same-day announcement counts, news volume); congressional/insider trading
-  (House/Senate stock-watcher); prediction markets (Kalshi/Polymarket); SEC filing
-  language via EDGAR full-text search.
+  (House/Senate stock-watcher); prediction markets (Kalshi/Polymarket). SEC 8-K
+  earnings-release language was tested in Phase 3a and failed. 10-K/10-Q language
+  (where *Lazy Prices* was originally shown) is untested, and the cached-download
+  machinery in `edgar_filings.py` would carry over.
 - Conflict handling ("trade agreement, hold back on conflict") is a rule in its own right
   and needs testing once two signals exist.
 - Deciles 8-10 at 20 days and a broader universe (S&P 400/600, where drift is typically

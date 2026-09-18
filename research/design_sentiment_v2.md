@@ -198,3 +198,41 @@ mistake. None came from looking at returns.
    (×1.2533) instead. A departure from a norm that has never varied scores the ±5 cap.
    After fixes 4 and 5, none of the three features is missing for any firm with 7+ prior
    releases. Both fixes are covered by `tests/test_edgar_features.py`.
+
+## Result (2026-09-18): FAIL
+
+The gate was run exactly as committed in `fea6279`: `--dev` once, then `--final` once.
+There are 21,686 events with all eight features: 10,012 train (2012-2019), 390 embargoed,
+11,284 holdout (2020-01 to 2026-06). Another 317 were dropped as unreadable at the decision time.
+
+Text coefficients, fitted on train (pp of unexplained 60-session return per sd):
+latency `days_since_prev_z` +0.258, `guide_share` +0.131, `guide_numeric` −0.120,
+`tone_z` −0.111, `sim_year` +0.076, `sim_prev` +0.058, `guide_dir` +0.017,
+`nongaap_density_z` −0.005.
+
+| | Train (in-sample) | Holdout (never fitted) |
+|---|---|---|
+| correlation, score vs unexplained return | +0.036 | **+0.003** |
+| lowest quintile | −0.333pp | −0.394pp |
+| 2 | −0.208pp | −0.596pp |
+| 3 | −0.031pp | −0.895pp |
+| 4 | +0.240pp | −1.039pp |
+| highest quintile | +0.428pp | −0.206pp |
+| **highest − lowest** | +0.855pp (p=0.009) | **+0.431pp (p=0.384)** |
+
+Among the 576 holdout events the strategy actually trades (top 5% SUE), the better-scored
+half returned +1.946pp and the worse half +2.782pp (p=0.618). That is the wrong direction.
+
+**Verdict: FAIL on both conditions.** The in-sample quintiles were monotone. The holdout
+quintiles are not, and the correlation is effectively zero. This is what an in-sample fit
+to noise looks like. The fusion thesis, as tested on company-authored earnings text, is
+**unsupported**. Per the rules above it is not retuned: no new features, no other model,
+no second look at 2020-2026.
+
+What this does **not** settle:
+
+- Text written by others about the company (news, analysts, social media) is a different
+  hypothesis. v1 could not test it (a 12-month window), and v2 did not.
+- Mid/small-cap filings were reserved as a second holdout. With the S&P 500 result a
+  clean zero, spending them on the same model has little prior support.
+- Anything built from these features would need a new pre-registration on new data.
