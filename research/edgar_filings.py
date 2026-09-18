@@ -9,19 +9,22 @@
 #  EX-99 exhibit. Unlike news this is complete, timestamped to the second,
 #  attributed to exactly one company, and free.
 #
-#  Two stages, each resumable:
+#  Three stages, each resumable:
 #    1. per company, list its 8-Ks carrying Item 2.02 (1-2 requests each)
-#    2. per earnings event, fetch the matching press release (2 requests)
-#
-#  Raw text is cached compressed so adding a feature later is a re-parse,
-#  never a re-download.
+#    2. per earnings event, fetch the matching press release as flat text
+#       (the v2 representation, kept so v2 stays reproducible)
+#    3. the same release as compact HTML, structure intact (v3; see
+#       research/release_text.py). Stage 2's flat text had lost the
+#       paragraphs and tables, which cost a full re-download to recover —
+#       so the structure is what gets cached now.
 #
 #  The SEC asks automated clients to identify themselves. The contact is
 #  read from `git config user.email` at run time (override with
 #  SEC_CONTACT) and is never written into the repo.
 #
-#    python research/edgar_filings.py            full run, resumable
-#    python research/edgar_filings.py --limit 5  a few companies, to try it
+#    python research/edgar_filings.py              full run, resumable
+#    python research/edgar_filings.py --limit 5    a few companies, to try it
+#    python research/edgar_filings.py --html-only  stage 3 alone
 # ═══════════════════════════════════════════════════════════════════════
 
 import argparse
@@ -48,6 +51,7 @@ sys.path.insert(0, str(ROOT))
 from trader.data import RESEARCH_DB, load_earnings, load_universe  # noqa: E402
 from trader.events import point_in_time  # noqa: E402
 from trader.market_calendar import ET  # noqa: E402
+from release_text import compact_html, exhibit  # noqa: E402
 
 # The SEC's acceptanceDateTime really is UTC despite the ambiguity around
 # its 'Z' suffix: across a sample the hours cluster at 11-13 and 20-21,
@@ -80,6 +84,9 @@ SCHEMA = """
         event_key TEXT PRIMARY KEY, cik TEXT, symbol TEXT, ann_date TEXT,
         accession TEXT, status TEXT);
     CREATE INDEX IF NOT EXISTS ix_8k_cik ON company_8ks(cik);
+    CREATE TABLE IF NOT EXISTS release_html (
+        accession TEXT PRIMARY KEY, doc_type TEXT, filename TEXT,
+        n_bytes INTEGER, html BLOB);
 """
 
 
@@ -210,6 +217,42 @@ def press_release(cik, accession):
     return doc, to_text(body.text)
 
 
+def release_html(cik, accession):
+    """The press release as compact HTML: (type, filename, html), or None.
+
+    The first EX-99 exhibit, as stage 2 took, so v2 and v3 read one text.
+    Index page first here, unlike stage 2: the combined submission bundles
+    every image and XBRL file and is built on demand for older filings —
+    18s for one where index + exhibit took 1.3s — so two small requests
+    beat one large one. The combined file is the fallback."""
+    nodash = accession.replace("-", "")
+    base = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{nodash}"
+    found = None
+    page = get(f"{base}/{accession}-index.htm")
+    try:
+        tables = pd.read_html(StringIO(page.text)) if page is not None else []
+    except ValueError:
+        tables = []
+    for table in tables:
+        cols = {str(c).strip().lower(): c for c in table.columns}
+        if "type" not in cols or "document" not in cols:
+            continue
+        hit = table[table[cols["type"]].astype(str).str.match(EXHIBIT, na=False)]
+        if len(hit):
+            name = str(hit.iloc[0][cols["document"]]).split()[0]
+            doc = get(f"{base}/{name}")
+            if doc is not None:
+                found = (str(hit.iloc[0][cols["type"]]).upper(), name, doc.text)
+            break
+    if found is None:
+        full = get(f"{base}/{accession}.txt")
+        found = exhibit(full.text) if full is not None else None
+    if found is None:
+        return None
+    kind, name, raw = found
+    return kind, name, compact_html(raw)
+
+
 def to_text(html):
     html = re.sub(r"(?is)<(script|style).*?</\1>", " ", html)
     text = re.sub(r"(?s)<[^>]+>", " ", html)
@@ -272,9 +315,41 @@ def match_events(conn):
     conn.commit()
 
 
+def fetch_structured(conn):
+    """Stage 3: compact HTML for every release stage 2 cached as text."""
+    todo = conn.execute(
+        """SELECT accession, cik FROM filings WHERE body IS NOT NULL
+             AND accession NOT IN (SELECT accession FROM release_html)""").fetchall()
+    print(f"\nStage 3 — structured HTML for {len(todo):,} press releases")
+
+    def fetch_html(row):
+        try:
+            return row[0], release_html(row[1], row[0])
+        except Exception as e:                   # one malformed document must not end the run
+            print(f"   {row[0]}: {type(e).__name__} {str(e)[:80]}", flush=True)
+            return row[0], None
+
+    # Latency-bound at two requests per release, so more threads than stage 2;
+    # the shared limiter still holds the SEC's rate ceiling.
+    got = 0
+    with ThreadPoolExecutor(max_workers=2 * WORKERS) as pool:
+        for i, (accession, res) in enumerate(pool.map(fetch_html, todo), 1):
+            kind, name, html = res if res else (None, None, None)
+            conn.execute("INSERT OR REPLACE INTO release_html VALUES (?,?,?,?,?)",
+                         (accession, kind, name, len(html) if html else 0,
+                          zlib.compress(html.encode("utf-8"), 9) if html else None))
+            got += html is not None
+            if i % 250 == 0 or i == len(todo):
+                conn.commit()
+                print(f"   {i}/{len(todo)}  ({got} stored)", flush=True)
+    conn.commit()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, help="only this many companies — for a trial run")
+    ap.add_argument("--html-only", action="store_true",
+                    help="only stage 3; leave the v2 tables exactly as they are")
     args = ap.parse_args()
 
     SESSION.headers.update({"User-Agent": contact(), "Accept-Encoding": "gzip, deflate"})
@@ -283,6 +358,10 @@ def main():
     DB_FILE.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_FILE, timeout=60)
     conn.executescript(SCHEMA)
+    if args.html_only:
+        fetch_structured(conn)
+        conn.close()
+        return
 
     n = build_queue(conn)
     total = conn.execute("SELECT COUNT(*) FROM event_filings").fetchone()[0]
@@ -343,6 +422,8 @@ def main():
                 print(f"   {i}/{len(todo)}  ({ok} with usable text)", flush=True)
     conn.commit()
 
+    fetch_structured(conn)
+
     have = conn.execute("SELECT COUNT(*) FROM filings WHERE body IS NOT NULL").fetchone()[0]
     size = conn.execute("SELECT SUM(LENGTH(body)) FROM filings").fetchone()[0] or 0
     chars = conn.execute("SELECT AVG(n_chars) FROM filings WHERE body IS NOT NULL").fetchone()[0] or 0
@@ -352,7 +433,7 @@ def main():
 
 
 def read_text(blob):
-    """Decompress a cached filing body."""
+    """Decompress a cached filing body, or a release_html.html blob."""
     return zlib.decompress(blob).decode("utf-8") if blob else None
 
 

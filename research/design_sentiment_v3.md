@@ -1,0 +1,129 @@
+# Sentiment signal, v3: design
+
+Started 2026-09-18. v2 (word lists and regexes on 8-K releases) failed its one-shot
+holdout, and v1 (the news ensemble in `Main.py`) was never testable. v3 is a new reader,
+built in layers, with every layer's job checkable. This file records decisions as they
+are made. The final test will get its own pre-registration before any of its data is used.
+
+## What the review of v1 measured (2026-09-18)
+
+These are measured on the 41,569 articles v1 scored, not argued. They set the priorities.
+
+| Check | Result | Meaning |
+|---|---|---|
+| Temperature/bias tuning vs untuned | rank correlation 0.993-0.999; 7% of labels flip | cosmetic: the numbers look different, but the article ordering barely changes |
+| Stated weights 34/33/33 | actual influence 37/42/22 | the temperatures silently cut Twitter-RoBERTa by a third |
+| The three models | correlation 0.70; labels agree 53% | related but not copies. This corrects v2's "one model in three coats" |
+| Relevance | 24% of articles filed under 2+ tickers | a quarter is market-wide chatter |
+| Sentiment vs the earnings surprise | −0.002 | nothing |
+| Sentiment vs the announcement-day move | −0.020 | nothing |
+| Sentiment vs the stock's own prior 10-day return | **+0.14** (p < 1e-7) | news narrates the price. It is an echo. |
+| Speed on this PC (CPU) | about 2 scorings/second per BERT-size model | a million paragraphs would take about 6 days per model |
+
+The root problem is not the output tampering. It is that nothing in v1 was ever fitted to
+predict a price, and that what it read mostly repeats the price.
+
+## Owner's decisions (2026-09-18)
+
+1. **Two ideas carry v3:**
+   - **The market labels the text.** The top layer learns from what the stock did right
+     after the release, not from human opinion labels.
+   - **Trade the gap.** The signal is the text-implied reaction minus the actual reaction
+     at trade time. The market under-reacting is the drift the project is built on.
+2. **The source is earnings press releases** (8-K EX-99), not news. They are timestamped
+   before the reaction, have 15 years of history, and cover one company per document.
+   With news, "the market labels the text" would teach the echo, because much news is
+   written after the move it describes. News may return later, for live use only.
+3. **The releases are re-downloaded with their structure** (`release_html`, below).
+4. **The architecture is layered:** big pretrained models frozen at the bottom, small
+   learned layers at the top, and no hand-set constants between layers. Start with layer 0.
+
+## Architecture
+
+| Layer | Job | Learned? | Checkable by |
+|---|---|---|---|
+| 0 | cut each release into units; label each vs the company's own previous releases: boilerplate / template / edited / new | no | reading the output: no returns involved |
+| 1 | read the units that matter: a fast embedding per unit, the three v1 models' raw logits (no temperatures), numbers from tables and guidance | frozen models | extraction accuracy on samples |
+| 2 | per release: pool unit readings, weighted by novelty; compare with the company's history | no / simple | stability, coverage |
+| 3 | predict the announcement reaction from text + surprise | **yes**, small, training years only | out-of-fold fit |
+| 4 | gap = predicted − actual reaction at entry | no | the pre-registered exam |
+
+**Reaction** (the label for idea 1): the stock's return minus SPY from the last close
+before the announcement to the first close the system could trade (the entry close in
+`trader/events.py`). This is fixed now so later layers cannot drift toward whatever fits.
+
+**Gap** (idea 2): predicted reaction − actual reaction, known at the entry close. Layer
+3 must be cross-fitted, meaning each event's prediction comes from a model that never
+saw that event, or the gap is zero by construction.
+
+## Data
+
+- `data/edgar.db`, table `release_html`: each release's EX-99 exhibit as compact HTML.
+  Styling is stripped; paragraphs, tables, bold and superscripts are kept. It is the same
+  document v2 read (100% word overlap checked on samples), and about 350 MB for all
+  26,358. Parser: `research/release_text.py`, with tests in `tests/test_release_text.py`.
+  - Why: v2's stored text was one flattened line per release. Paragraphs were merged,
+    tables were smeared into number strings, and old Windows-1252 quotes and dashes were
+    deleted. Layer 0 needs real pieces.
+  - Download route: index page + exhibit. The combined submission file is built on
+    demand for older filings and took up to 18 s each.
+- `data/v3.db`, table `layer0`: per release, the counts per class and the units themselves.
+
+## Layer 0 (`research/v3_layer0.py`)
+
+**Units:** each paragraph sentence (not split after "Inc." / "U.S." / initials), short
+heading-like fragments, and each table row.
+
+**Classes**, against the company's previous `PRIOR_K` releases, strictly earlier:
+
+- **boilerplate:** the identical text appeared before
+- **template:** the same words, with only numbers, months or quarter names changed. The
+  news in these units is in the numbers, which layer 1 extracts.
+- **edited:** word-pair Jaccard ≥ `EDITED` with some earlier unit
+- **new:** nothing close
+
+Within-release repeats (a headline bullet restated in the body) are flagged, not dropped.
+
+### Decisions made without the owner (technical, reversible)
+
+- `PRIOR_K = 4`: one year of history, which includes the same quarter last year.
+- `EDITED = 0.45`. It is the low point of the best-match similarity histogram for
+  sentences that are neither boilerplate nor template: 163,880 sentences from 3,081
+  mature releases of 98 companies, in 0.1 bins. The count falls from 26,908 (0.1-0.2) to
+  its minimum of 12,226 (0.4-0.5), then rises to a second cluster over 0.5-0.9. This uses
+  text only, no returns. The fine 0.05 bins are jagged, because short sentences give
+  Jaccard ratios like 1/2 and 2/3, so the 0.1 bins were used.
+- **Edited sentences are read by later layers, not only new ones.** Examples above 0.5
+  include "higher mobile and server microprocessor revenues were partially offset by lower
+  desktop revenue": last quarter's sentence with its meaning changed. So the cutoff only
+  separates "rewritten" from "brand new", and nothing is discarded at the boundary. Only
+  boilerplate is skipped. Template units pass their numbers on, not their words.
+- Word pairs made only of placeholders ("# #") are ignored. After number masking, every
+  table row shares them, which made each comparison all-rows-against-all-rows (2 s per
+  release instead of 0.08 s) and said nothing about identity.
+
+An earlier trial on 32 companies (1,112 mature releases), before the placeholder fix:
+
+| Unit | boilerplate | template | edited | new |
+|---|---|---|---|---|
+| sentences | 43% | 14% | 16% | 26% |
+| table rows | 21% | 66% | 10% | 3% |
+| headings | 83% | 10% | 1% | 5% |
+
+It ran at `EDITED = 0.5`, before the threshold was set. The full-run figures replace it.
+- A company's first releases have little or no history, so every unit looks new.
+  `n_prior` is stored, and later layers should require `n_prior ≥ PRIOR_K`.
+
+## Testing plan (to be pre-registered before layer 3 is fitted)
+
+- **Development:** S&P 500 releases. v2 spent the 2020-2026 S&P 500 holdout on its own
+  question (does v2's score predict drift). Using those years' *announcement reactions*
+  to develop a different model is a new question, not a second look at that one.
+- **Final exam, once:** S&P 400/600 releases. No v3 layer that touches returns may run on
+  them before the pre-registration is committed. Layer 0 can, since it reads no returns.
+
+## Open
+
+- An LLM "teacher" for layer 1 costs money per document, against the free-only rule.
+  Decide once the free models' ceiling is known.
+- The S&P 400/600 releases still need downloading (the machinery exists).
