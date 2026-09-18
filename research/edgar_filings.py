@@ -25,6 +25,7 @@
 #    python research/edgar_filings.py              full run, resumable
 #    python research/edgar_filings.py --limit 5    a few companies, to try it
 #    python research/edgar_filings.py --html-only  stage 3 alone
+#    python research/edgar_filings.py --set midsmall   the S&P 400/600 exam set
 # ═══════════════════════════════════════════════════════════════════════
 
 import argparse
@@ -61,6 +62,11 @@ from release_text import compact_html, exhibit  # noqa: E402
 # shortly AFTER the press release goes out, so this timestamp is a
 # conservative marker of when the text was publicly available.
 DB_FILE     = ROOT / "data" / "edgar.db"
+# Which earnings events to cover: source database -> filings database. The
+# S&P 400/600 set is the v3 exam set and lives in its own files, so no
+# script aimed at the development data can read it by accident.
+SETS        = {"sp500":    (RESEARCH_DB, DB_FILE),
+               "midsmall": (ROOT / "data" / "oos_midsmall.db", ROOT / "data" / "edgar_midsmall.db")}
 START_DATE  = "2010-01-01"
 RATE        = 8.0        # requests/second; the SEC's published ceiling is 10
 WORKERS     = 5          # each filing costs two round trips of ~400ms, so one
@@ -263,9 +269,9 @@ def to_text(html):
 
 
 # ── Work queue ────────────────────────────────────────────────────────
-def build_queue(conn):
+def build_queue(conn, source=RESEARCH_DB):
     """One row per point-in-time earnings event that still needs a filing."""
-    research = sqlite3.connect(f"file:{RESEARCH_DB}?mode=ro", uri=True)
+    research = sqlite3.connect(f"file:{source}?mode=ro", uri=True)
     earn = load_earnings(research)
     universe = load_universe(research)
     ids = pd.read_sql_query(
@@ -345,9 +351,48 @@ def fetch_structured(conn):
     conn.commit()
 
 
+def fetch_structured_events(conn):
+    """Stage 2 for sets downloaded after v2: the matched releases straight
+    to compact HTML, with no flattened text. `filings` keeps the metadata
+    (dates, acceptance time) and body stays NULL."""
+    todo = conn.execute(
+        """SELECT DISTINCT e.accession, e.cik, e.symbol FROM event_filings e
+           WHERE e.accession IS NOT NULL
+             AND e.accession NOT IN (SELECT accession FROM release_html)""").fetchall()
+    print(f"\nStage 2 — structured HTML for {len(todo):,} press releases")
+
+    def fetch_html(row):
+        try:
+            return row, release_html(row[1], row[0])
+        except Exception as e:                   # one malformed document must not end the run
+            print(f"   {row[0]}: {type(e).__name__} {str(e)[:80]}", flush=True)
+            return row, None
+
+    got = 0
+    with ThreadPoolExecutor(max_workers=2 * WORKERS) as pool:
+        for i, ((accession, cik, symbol), res) in enumerate(pool.map(fetch_html, todo), 1):
+            kind, name, html = res if res else (None, None, None)
+            meta = conn.execute(
+                "SELECT filed_date, accepted_at, items FROM company_8ks WHERE accession=?",
+                (accession,)).fetchone() or ("", "", "")
+            conn.execute("INSERT OR REPLACE INTO filings VALUES (?,?,?,?,?,?,?,?,?)",
+                         (accession, cik, symbol, meta[0], meta[1], meta[2], name,
+                          len(html) if html else 0, None))
+            conn.execute("INSERT OR REPLACE INTO release_html VALUES (?,?,?,?,?)",
+                         (accession, kind, name, len(html) if html else 0,
+                          zlib.compress(html.encode("utf-8"), 9) if html else None))
+            got += html is not None
+            if i % 250 == 0 or i == len(todo):
+                conn.commit()
+                print(f"   {i}/{len(todo)}  ({got} stored)", flush=True)
+    conn.commit()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, help="only this many companies — for a trial run")
+    ap.add_argument("--set", choices=sorted(SETS), default="sp500",
+                    help="whose earnings events: sp500 (v2/v3 development) or midsmall (v3 exam)")
     ap.add_argument("--html-only", action="store_true",
                     help="only stage 3; leave the v2 tables exactly as they are")
     args = ap.parse_args()
@@ -355,15 +400,17 @@ def main():
     SESSION.headers.update({"User-Agent": contact(), "Accept-Encoding": "gzip, deflate"})
     print(f"Identifying to the SEC as: {SESSION.headers['User-Agent'].split('@')[0]}@…")
 
-    DB_FILE.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_FILE, timeout=60)
+    source, target = SETS[args.set]
+    target.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(target, timeout=60)
+    conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(SCHEMA)
     if args.html_only:
         fetch_structured(conn)
         conn.close()
         return
 
-    n = build_queue(conn)
+    n = build_queue(conn, source)
     total = conn.execute("SELECT COUNT(*) FROM event_filings").fetchone()[0]
     print(f"Work queue: {total:,} earnings events ({n:,} inserted this run)")
 
@@ -393,6 +440,13 @@ def main():
     matched = conn.execute("SELECT COUNT(*) FROM event_filings WHERE accession IS NOT NULL").fetchone()[0]
     print(f"   {matched:,} of {total:,} events matched to an 8-K "
           f"({matched / max(total, 1) * 100:.1f}%)")
+
+    if args.set != "sp500":
+        fetch_structured_events(conn)
+        n_ok = conn.execute("SELECT COUNT(*) FROM release_html WHERE html IS NOT NULL").fetchone()[0]
+        print(f"\n{n_ok:,} press releases stored as structured HTML in {target.name}")
+        conn.close()
+        return
 
     todo = conn.execute(
         """SELECT DISTINCT e.accession, e.cik, e.symbol FROM event_filings e

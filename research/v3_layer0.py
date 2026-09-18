@@ -23,6 +23,7 @@
 #
 #    python research/v3_layer0.py              every release with HTML
 #    python research/v3_layer0.py --sample 40  a few companies, printed
+#    python research/v3_layer0.py --set midsmall   the S&P 400/600 exam set
 # ═══════════════════════════════════════════════════════════════════════
 
 import argparse
@@ -46,6 +47,9 @@ from release_text import blocks  # noqa: E402
 
 EDGAR_DB = ROOT / "data" / "edgar.db"
 V3_DB    = ROOT / "data" / "v3.db"
+# releases in -> layer 0 out. The S&P 400/600 exam set has its own files.
+SETS     = {"sp500":    (EDGAR_DB, V3_DB),
+            "midsmall": (ROOT / "data" / "edgar_midsmall.db", ROOT / "data" / "v3_midsmall.db")}
 PRIOR_K  = 4        # compare with the previous year of releases
 EDITED   = 0.45     # word-pair Jaccard for "edited": the low point of the sentence
                     # similarity histogram (design doc, "Layer 0")
@@ -203,11 +207,11 @@ SCHEMA = """
 """
 
 
-def companies():
+def companies(edgar_db=EDGAR_DB):
     """{cik: [(accession, filed_date)]} for every release with HTML. One
     pass over the small columns; filings has no index on cik, and filtering
     it per company re-read the whole blob-heavy table 500 times."""
-    conn = sqlite3.connect(f"file:{EDGAR_DB}?mode=ro", uri=True, timeout=60)
+    conn = sqlite3.connect(f"file:{edgar_db}?mode=ro", uri=True, timeout=60)
     have = {a for (a,) in conn.execute("SELECT accession FROM release_html WHERE html IS NOT NULL")}
     out = {}
     for accession, cik, filed in conn.execute("SELECT accession, cik, filed_date FROM filings"):
@@ -217,9 +221,9 @@ def companies():
     return out
 
 
-def load_releases(listing):
+def load_releases(listing, edgar_db=EDGAR_DB):
     """[(accession, filed_date, blocks)] for one company's listing."""
-    conn = sqlite3.connect(f"file:{EDGAR_DB}?mode=ro", uri=True, timeout=60)
+    conn = sqlite3.connect(f"file:{edgar_db}?mode=ro", uri=True, timeout=60)
     out = []
     for accession, filed in listing:
         (html,) = conn.execute("SELECT html FROM release_html WHERE accession = ?",
@@ -230,9 +234,9 @@ def load_releases(listing):
 
 
 def run_company(item):
-    cik, listing = item
-    try:
-        return cik, classify_company(load_releases(listing)), None
+    cik, listing, edgar_db = item          # paths passed in: Windows workers
+    try:                                    # re-import the module fresh
+        return cik, classify_company(load_releases(listing, edgar_db)), None
     except Exception as e:                       # report, never lose the whole run
         return cik, [], f"{type(e).__name__}: {str(e)[:100]}"
 
@@ -241,9 +245,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sample", type=int, help="only this many companies, printed, not saved")
     ap.add_argument("--workers", type=int, default=6)
+    ap.add_argument("--set", choices=sorted(SETS), default="sp500")
     args = ap.parse_args()
 
-    listing = companies()
+    edgar_db, v3_db = SETS[args.set]
+    listing = companies(edgar_db)
     ciks = sorted(listing)
     if args.sample:
         ciks = sorted(np.random.default_rng(0).choice(ciks, size=min(args.sample, len(ciks)),
@@ -252,13 +258,13 @@ def main():
 
     out = None
     if not args.sample:
-        out = sqlite3.connect(V3_DB, timeout=60)
+        out = sqlite3.connect(v3_db, timeout=60)
         out.execute("PRAGMA journal_mode=WAL")
         out.executescript(SCHEMA)
 
     totals, done, errors = dict.fromkeys(CLASSES, 0), 0, 0
     with Pool(args.workers) as pool:
-        work = [(cik, listing[cik]) for cik in ciks]
+        work = [(cik, listing[cik], edgar_db) for cik in ciks]
         for i, (cik, recs, err) in enumerate(pool.imap_unordered(run_company, work), 1):
             if err:
                 errors += 1
