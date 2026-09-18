@@ -86,3 +86,53 @@ account. Nothing else has passed the gate, so there is no alternative to switch 
   not support. That remains the owner's decision.
 - **Recommendation, not automatic:** future gates adopt T1 and T2 in place of date-only
   clustering. That would change the mandatory gate, so it is the owner's call.
+
+## Result (2026-09-18): the signal DOES NOT SURVIVE
+
+The rules were committed in `fbddc02` and the script in `7fd64bf`, both before this run.
+`python research/inference_check.py`, run once:
+
+| | S&P 400/600 (primary, blind) | S&P 500 (not blind) |
+|---|---|---|
+| events / entry dates | 1,480 / 748 | 1,278 / 779 |
+| T0 original, date-clustered | +2.730pp, p=0.0009 ✓ replicates | +1.912pp, p=0.0020 ✓ replicates |
+| T1 same estimate, quarter-clustered | +2.730pp, **p=0.021** (60 quarters) | +1.912pp, p=0.073 (65 quarters) |
+| T2 calendar-time α vs matched ETF | **+2.94%/yr, p=0.367**, β 1.36 (182 months) | −0.90%/yr, p=0.830, β 1.29 (196 months) |
+| verdict | **DOES NOT SURVIVE** (fails T2) | does not survive (fails T1 and T2) |
+
+**T3, the live strategy vs SPY** (not blind; 184 months, 2011-05 → 2026-09): raw excess
++3.30%/yr, α **+1.06%/yr, p=0.750**, β 1.16. **NOT SHOWN** to beat SPY after market exposure.
+
+### What it means
+
+Per the rules above, the recorded p=0.0009 overstated the evidence, and **the signal is
+unproven**. It is not disproven: every point estimate is still positive on 400/600. With
+15 years of lumpy, high-beta returns, that estimate cannot be told apart from zero. At the
+portfolio level, the live strategy's returns look like the market at about 1.16× exposure.
+`config/strategy.json` is unchanged and the paper account is unaffected. The only clean
+test left is out-of-time: live data from 2026-09 on.
+
+### Post-hoc diagnostics (not part of the verdict)
+
+These were run after the result was seen, to understand why T1 passes on 400/600 but T2
+does not. They cannot change the verdict.
+
+- **Most of the gap is beta.** With β forced to 1, the 400/600 calendar-time excess is
+  +7.19%/yr (p=0.065) against the benchmark's +11.8%/yr. Estimating β (1.36) cuts it to
+  +2.94%/yr. Phase 2d's control, where ordinary events in equally volatile stocks earned
+  +0.06pp, pooled comparisons across time. Top-5% surprises instead bunch up in
+  particular periods: 2020 holds 256 of the 1,480 events, at +12.5pp. The likely
+  reason is that when those clusters line up with rallies, high-beta stocks look like
+  alpha. Dropping Mar-Dec 2020 barely
+  moves T2 (+2.58%/yr, p=0.43).
+- **The effect is lumpy.** Mean excess by entry year on 400/600 ranges from −5.1pp (2019)
+  to +12.5pp (2020). Four of 16 years are negative, and 2017 is flat.
+- **S&P 500: date-weighting flattered the estimate.** The 498 events alone on their entry
+  date averaged +3.22pp; the 780 that shared a date averaged +0.23pp. Weighted by event
+  instead of by date, the mean is +1.40pp, not +1.91pp. On 400/600 the two weightings
+  agree (+3.06pp vs +2.73pp).
+
+### Recommendation (owner's decision)
+
+Future gates should require T1 and T2 alongside date clustering. Everything this project
+has adopted passed only the date-clustered test.

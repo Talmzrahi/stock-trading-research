@@ -3,13 +3,16 @@
 Trading system that fuses numerical data, non-standard/alternative signals, and news
 sentiment to trade the gap between market sentiment and company fundamentals.
 
-**Where it stands (2026-09-18):** a simulated paper-trading loop is built and trades one
-validated signal — post-earnings drift on unusually large EPS surprises. It is a
+**Where it stands (2026-09-18):** a simulated paper-trading loop is built for one
+signal — post-earnings drift on unusually large EPS surprises. It is a
 low-frequency, long-only, event-driven strategy: buy S&P 500 stocks whose price-scaled
 surprise is in the top 5% of the trailing year, hold 60 sessions or until a 12-sd
-volatility trailing stop, keep idle cash in SPY. The original VIX-regime idea was
-rejected (Phase 1). The fusion thesis was tested on SEC earnings-release text and
-**failed** its pre-registered holdout (Phase 3a), so sentiment stays out of the system.
+volatility trailing stop, keep idle cash in SPY. **That signal is now unproven:** it
+passed the date-clustered gate but not overlap-robust, market-adjusted inference
+(Phase 2e). The strategy is not shown to beat SPY after market exposure. The
+original VIX-regime idea was rejected (Phase 1). The fusion thesis was tested on SEC
+earnings-release text and **failed** its pre-registered holdout (Phase 3a), so
+sentiment stays out of the system.
 
 This file is the source of truth for sequencing. Update it as phases complete or
 priorities change; don't let it go stale.
@@ -266,7 +269,8 @@ sessions. 1,176 symbols usable; 543 have no Yahoo data at all (SIVB, IDTI, WWAV 
 genuinely delisted, confirmed by direct checks), so this sample is still survivor-tilted.
 
 **PASS: top 5% of trailing SUE, 60 sessions, net 20bps, vs IJH/IJR — +2.730pp,
-p=0.0009**, 1,480 events on 748 dates, 1,152 firms.
+p=0.0009**, 1,480 events on 748 dates, 1,152 firms. (Re-checked in Phase 2e: it does
+not survive overlap-robust, market-adjusted inference.)
 
 | cut | n | vs ETF | @40bps | vs SPY |
 |---|---|---|---|---|
@@ -371,6 +375,40 @@ against SPY's -34%.
 Tempting and **not adopted**: filtering entries to high-volatility names. That was found
 by looking at the data, so adopting it now would be exactly the post-hoc choice the gate
 exists to prevent. It would need pre-registering and testing on data not used for it.
+
+## Phase 2e — The PEAD evidence under overlap-robust inference — DOES NOT SURVIVE (2026-09-18)
+
+Pre-registered in [research/prereg_inference.md](research/prereg_inference.md) (`fbddc02`),
+script [research/inference_check.py](research/inference_check.py) committed before it ran.
+
+Every gate so far clustered by entry date, but positions are held 60 sessions, so trades
+entered days apart share most of their returns. This re-check changed only the statistics
+and reproduced both original results exactly before doing anything else.
+
+| | S&P 400/600 (primary, blind) | S&P 500 |
+|---|---|---|
+| original, date-clustered | +2.730pp, p=0.0009 | +1.912pp, p=0.002 |
+| same estimate, quarter-clustered | p=**0.021** | p=0.073 |
+| calendar-time α vs matched ETF | **+2.94%/yr, p=0.37**, β 1.36 | −0.90%/yr, p=0.83, β 1.29 |
+
+The live strategy vs SPY, monthly: raw excess +3.30%/yr, but **α +1.06%/yr, p=0.75**,
+β 1.16.
+
+**Verdict: the signal is unproven, not disproven.** Point estimates on 400/600 are still
+positive. But after allowing for overlapping holds and the extra market exposure of the
+stocks it picks, 15 years of lumpy returns cannot separate it from zero. Nothing in
+`config/strategy.json` changes. The paper account now serves as an out-of-time test, which
+is the only clean test left, and it only works if the account actually runs.
+
+Post-hoc diagnostics, which cannot change the verdict:
+- Most of the gap is **beta**. With β forced to 1, 400/600 shows +7.2%/yr (p=0.065).
+- Top-5% surprises **bunch in time**: 2020 alone holds 17% of 400/600 events, at +12.5pp.
+- On the S&P 500, **date-weighting flattered the estimate**. Lone-date events averaged
+  +3.2pp; the rest +0.2pp.
+
+Lesson worth keeping: **with overlapping holding periods, date clustering is not enough.
+Test the calendar-time, market-adjusted return too.** It is the recommended addition to
+the mandatory gate; adopting it is the owner's decision.
 
 ## Phase 3a — Fusion test on SEC earnings-release text — FAIL (2026-09-18)
 
