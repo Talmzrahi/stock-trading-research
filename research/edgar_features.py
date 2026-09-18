@@ -5,14 +5,14 @@
 #  research/edgar_filings.py and is never re-downloaded — this step can be
 #  re-run as often as the feature set changes.
 #
-#  Two features go to the model, as registered:
-#    tone_z        Loughran-McDonald tone, against the company's own norm
-#    guidance      direction and concreteness of forward-looking language
+#  Eight features go to the model, as registered (design, "Final feature
+#  set"): tone_z; guide_dir, guide_share, guide_numeric; sim_prev,
+#  sim_year (language change); days_since_prev_z (latency);
+#  nongaap_density_z.
 #
-#  Other raw counts (uncertainty, litigious, modality, non-GAAP emphasis,
-#  length) are STORED but not used: parsing is the expensive part, and the
-#  design defers the decision on those. Using them would need the design
-#  updated first.
+#  Other raw counts (uncertainty, litigious, modality, length) are STORED
+#  but not used: parsing is the expensive part. Using them would need the
+#  design updated first.
 #
 #  POINT-IN-TIME DISCIPLINE. Every normalisation looks strictly backwards:
 #    - against the company's own 12 most recent PRIOR filings (minimum 6),
@@ -153,12 +153,12 @@ def raw_features(text, lex):
         "dollar_density": len(DOLLAR.findall(narrative)) / n,
         "percent_density": len(PERCENT.findall(narrative)) / n,
         "range_count": len(RANGE.findall(narrative)),
+        "nongaap_density": len(NONGAAP.findall(narrative)) / n,
         # stored, not used by the registered model
         "uncertainty_share": counts.get("uncertainty", 0) / n,
         "litigious_share": counts.get("litigious", 0) / n,
         "weak_modal_share": counts.get("weak_modal", 0) / n,
         "strong_modal_share": counts.get("strong_modal", 0) / n,
-        "nongaap_density": len(NONGAAP.findall(narrative)) / n,
     }
 
 
@@ -176,15 +176,32 @@ def own_history_z(df, cols, min_prior=MIN_PRIOR, window=PRIOR_N):
     Median and MAD rather than mean and standard deviation: with a dozen
     prior filings one unusual quarter otherwise shrinks the denominator and
     manufactures a huge score (AMD scored +7.8 sd this way before the fix).
+
+    A zero MAD is common, not exotic: some firms file the same template
+    every quarter (BXP's tone is identical in all 66 releases), and filing
+    gaps of exactly 91 days repeat. Treating that as missing silently
+    dropped 13-28% of mature firms. A value equal to the norm scores 0; a
+    departure from it is scaled by the mean absolute deviation instead; a
+    departure from a norm that never varied scores the cap.
+
+    The window functions must skip NaN: shift() puts one in the first slot,
+    and plain np.median over it returned NaN until the window slid past,
+    so the first 12 releases of every company went unscored whatever
+    min_prior said.
     """
     df = df.sort_values(["cik", "filed_date"])
     out = {}
     for col in cols:
         g = df.groupby("cik")[col]
         roll = lambda f: g.transform(lambda s: s.shift().rolling(window, min_periods=min_prior).apply(f, raw=True))
-        centre = roll(np.median)
-        spread = roll(lambda a: np.median(np.abs(a - np.median(a))) * 1.4826)
-        z = (df[col] - centre) / spread.replace(0, np.nan)
+        centre = roll(np.nanmedian)
+        spread = roll(lambda a: np.nanmedian(np.abs(a - np.nanmedian(a))) * 1.4826)
+        fallback = roll(lambda a: np.nanmean(np.abs(a - np.nanmedian(a))) * 1.2533)
+        gap = df[col] - centre
+        scale = spread.where(spread > 0, fallback)
+        z = gap / scale.replace(0, np.nan)
+        z = z.mask(scale.eq(0) & gap.ne(0), np.sign(gap) * WINSOR)
+        z = z.mask(gap.eq(0), 0.0)
         out[f"{col}_z"] = z.clip(-WINSOR, WINSOR)
     return pd.DataFrame(out, index=df.index)
 

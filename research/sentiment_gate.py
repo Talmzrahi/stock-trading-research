@@ -14,6 +14,11 @@
 #    3. a text model of that residual, also fitted on 2010-2019
 #    4. one look at 2020-2026: does the text score still predict?
 #
+#  Training events whose 60-session window runs into 2020 are embargoed —
+#  used by neither side — so no training target shares prices with the
+#  holdout. Events whose 8-K was accepted after the 14:30 ET decision on
+#  the entry day are dropped: the live system could not have read them.
+#
 #  THE HOLDOUT IS PROTECTED STRUCTURALLY. --dev cannot read it at all;
 #  --final reads it once and says so loudly. Develop in --dev.
 #
@@ -41,9 +46,13 @@ EDGAR_DB   = ROOT / "data" / "edgar.db"
 TRAIN_END  = "2019-12-31"
 HOLD_START = "2020-01-01"
 HOLD       = 60          # sessions, matching the strategy's holding period
+DECISION   = pd.Timedelta(hours=14, minutes=30)   # ET; scripts/install_task.ps1
+ET         = "America/New_York"
 
-# Registered feature set. Adding to this needs the design updated first.
-TEXT_FEATURES = ["tone_z", "guide_dir", "guide_share", "guide_numeric"]
+# Registered feature set (design, "Final feature set", 2026-09-18).
+# Changing this needs the design updated first.
+TEXT_FEATURES = ["tone_z", "guide_dir", "guide_share", "guide_numeric",
+                 "sim_prev", "sim_year", "days_since_prev_z", "nongaap_density_z"]
 SURPRISE_FEATURES = ["sue", "conviction"]
 
 
@@ -62,6 +71,7 @@ def build_panel(cfg):
     c = ev.symbol.map(col).to_numpy()
     b = col[cfg.benchmark]
     ev["fwd"] = (px[x, c] / px[e, c] - 1) - (px[x, b] / px[e, b] - 1)
+    ev["exit_date"] = market.cal[x]
     ev = ev[np.isfinite(ev.fwd)]
     # The signal stores its percentile, not the raw surprise; the baseline
     # model wants both, and it is the same price-scaled definition.
@@ -76,8 +86,15 @@ def build_panel(cfg):
     panel = (ev.merge(links, left_on="key", right_on="event_key")
                .merge(feats.drop(columns=["symbol"], errors="ignore"), on="accession",
                       suffixes=("", "_f")))
+    decided = (panel.entry_date + DECISION).dt.tz_localize(ET)
+    readable = pd.to_datetime(panel.accepted_at, utc=True) <= decided
+    print(f"   {(~readable).sum():,} events dropped: 8-K accepted after the entry-day decision")
+    panel = panel[readable]
+
     panel = panel.dropna(subset=TEXT_FEATURES + SURPRISE_FEATURES + ["fwd"])
-    panel["period"] = np.where(panel.entry_date <= TRAIN_END, "train", "holdout")
+    panel["period"] = np.select(
+        [panel.exit_date <= TRAIN_END, panel.entry_date >= HOLD_START],
+        ["train", "holdout"], "embargo")
     return panel
 
 
@@ -107,6 +124,26 @@ def clustered(values, dates):
     return float(m.mean()), float(stats.ttest_1samp(m, 0).pvalue), len(m)
 
 
+def clustered_diff(values, flag, dates):
+    """Mean of the flagged events minus the rest, with the standard error
+    clustered by entry date (CR1). Events entered the same day share a
+    market; a plain two-sample t-test treats them as independent draws and
+    overstates significance. Returns (difference, p, number of dates)."""
+    y = np.asarray(values, float)
+    X = np.column_stack([np.ones(len(y)), np.asarray(flag, float)])
+    XtX_inv = np.linalg.inv(X.T @ X)
+    beta = XtX_inv @ X.T @ y
+    u = y - X @ beta
+    groups = pd.factorize(np.asarray(dates))[0]
+    G = groups.max() + 1
+    scores = np.zeros((G, 2))
+    np.add.at(scores, groups, X * u[:, None])
+    n, k = X.shape
+    V = XtX_inv @ (scores.T @ scores) @ XtX_inv * (G / (G - 1)) * ((n - 1) / (n - k))
+    t = beta[1] / np.sqrt(V[1, 1])
+    return float(beta[1]), float(2 * stats.t.sf(abs(t), G - 1)), int(G)
+
+
 def report_split(panel, model_base, model_text, label):
     X_s = panel[SURPRISE_FEATURES].to_numpy(float)
     X_t = panel[TEXT_FEATURES].to_numpy(float)
@@ -126,10 +163,11 @@ def report_split(panel, model_base, model_text, label):
         m, p, _ = clustered(resid[rows], panel.entry_date.iloc[rows])
         print(f"   {str(band):<10}{len(rows):>8,}{m * 100:>24.3f}pp{p:>9.3f}")
 
-    top, bottom = bands == "highest", bands == "lowest"
-    diff = resid[top].mean() - resid[bottom].mean()
-    _, p_diff = stats.ttest_ind(resid[top], resid[bottom], equal_var=False)
-    print(f"   highest minus lowest: {diff * 100:+.3f}pp (p={p_diff:.4f})")
+    top = (bands == "highest").to_numpy()
+    ends = top | (bands == "lowest").to_numpy()
+    diff, p_diff, n_dates = clustered_diff(resid[ends], top[ends], panel.entry_date[ends])
+    print(f"   highest minus lowest: {diff * 100:+.3f}pp "
+          f"(p={p_diff:.4f}, clustered on {n_dates:,} entry dates)")
     return r, diff, p_diff
 
 
@@ -146,7 +184,9 @@ def main():
     panel = build_panel(cfg)
     train = panel[panel.period == "train"].reset_index(drop=True)
     n_hold = int((panel.period == "holdout").sum())
-    print(f"{len(panel):,} events with filings — {len(train):,} train, {n_hold:,} holdout "
+    n_gap = int((panel.period == "embargo").sum())
+    print(f"{len(panel):,} events with filings — {len(train):,} train, {n_gap:,} embargoed, "
+          f"{n_hold:,} holdout "
           f"({'holdout NOT read' if not final else 'holdout being read now'})")
 
     if len(train) < 500:
@@ -178,14 +218,12 @@ def main():
         resid = top5.fwd.to_numpy() - predict(base, X_s)
         score = predict(text, top5[TEXT_FEATURES].to_numpy(float))
         half = score >= np.median(score)
-        hi, _, _ = clustered(resid[half], top5.entry_date[half])
-        lo, _, _ = clustered(resid[~half], top5.entry_date[~half])
-        _, p_half = stats.ttest_ind(resid[half], resid[~half], equal_var=False)
+        gap, p_half, _ = clustered_diff(resid, half, top5.entry_date)
         print(f"\n── Among the top-{round((1 - cfg.cutoff) * 100)}% events the strategy "
               f"actually trades ({len(top5):,}) ──")
-        print(f"   better-framed half {hi * 100:+.3f}pp vs worse half {lo * 100:+.3f}pp "
-              f"(p={p_half:.4f})")
-        sorts = p_half < 0.05 and hi > lo
+        print(f"   better-framed half {resid[half].mean() * 100:+.3f}pp vs worse half "
+              f"{resid[~half].mean() * 100:+.3f}pp (p={p_half:.4f}, date-clustered)")
+        sorts = p_half < 0.05 and gap > 0
     else:
         print(f"\n   Only {len(top5)} top-cutoff events in the holdout — too few to sort.")
         sorts = False

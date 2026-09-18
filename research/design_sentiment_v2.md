@@ -118,3 +118,83 @@ comparison.
 - Loosening the top-5% entry cutoff to give the filter more events is a **separate**
   pre-registered question, to be asked only after the filter exists.
 - Mid/small-cap filings are a later, second holdout — not part of this test.
+
+## Final feature set (v2.1): registered 2026-09-18, before the holdout is read
+
+This section fixes the test. It is committed before any run of the gate on these eight
+features, in dev or final mode. The only gate output seen so far was the dev run on the
+original four (train only, top-minus-bottom quintile +0.735pp, unclustered p=0.032, tone
+coefficient negative). After that run the owner chose to add three of the four deferred
+features before spending the holdout. That is allowed because dev never reads 2020-2026.
+
+| Feature | What it measures | Scale |
+|---|---|---|
+| `tone_z` | Loughran-McDonald (pos−neg)/(pos+neg+1), narrative only | robust z vs own history |
+| `guide_dir` | (raises − cuts)/(raises + cuts + 1) within guidance sentences | raw |
+| `guide_share` | share of sentences that are forward-looking | raw |
+| `guide_numeric` | guidance contains a number (0/1) | raw |
+| `sim_prev` | cosine similarity of the narrative to the company's previous release | raw |
+| `sim_year` | the same, against the release four back (same quarter last year) | raw |
+| `days_since_prev_z` | days since the company's previous earnings release (latency) | robust z vs own history |
+| `nongaap_density_z` | non-GAAP / "adjusted" mentions per narrative word | robust z vs own history |
+
+"Robust z vs own history" means median and MAD over the company's 12 most recent *prior*
+releases, with at least 6 required, capped at ±5. Hedging/uncertainty density stays deferred.
+
+**Why the similarity features are raw.** Similarity is already a comparison with the
+company's own previous text, so it is a change measure by construction. Z-scoring the
+level features exists to turn them into change measures. Z-scoring similarity again would
+measure how unusual this quarter's *rate* of rewriting is, which is not what *Lazy
+Prices* tested, and it would require 7+ prior releases. This was decided on principle,
+before any results existed for either version.
+
+**Model, sample, verdict.** These are unchanged from the committed gate. A baseline ridge
+predicts the 60-session excess return over SPY from `sue` and `conviction`. A text ridge
+(α=1, standardised features) predicts that baseline's residual from the eight features.
+Both are fitted on training events only. The sample is every point-in-time S&P 500
+event that has all eight features, which in practice means firms with 7+ prior releases.
+The operational PASS rule:
+
+1. In the holdout, the highest text-score quintile minus the lowest, in mean residual
+   return, is **> 0 with p < 0.05**, and
+2. among holdout events the strategy actually trades (conviction ≥ the config cutoff, 0.95;
+   at least 100 events), the better-scored half minus the worse half is **> 0 with p < 0.05**.
+
+Both tests are date-clustered. Anything else is FAIL. No retuning follows.
+
+### Corrections made before the look
+
+These were found while reviewing the gate before registration. They are disclosed under the
+rule "if a bug is found, it is fixed and disclosed; the rule does not change". Each one
+removes leakage, makes the test stricter, or restores data the code was dropping by
+mistake. None came from looking at returns.
+
+1. **Clustering was missing from the verdict.** The design above says inference is
+   date-clustered. The code's two verdict tests were plain Welch two-sample t-tests, which
+   treat events entered on the same day as independent. Each test is now a
+   difference-in-means regression with standard errors clustered by entry date (CR1, t on
+   G−1 df). The estimate matches statsmodels exactly; the p-value is slightly more
+   conservative. The dev figure p=0.032 quoted above predates this fix.
+2. **Look-ahead in filing timing.** Filings are matched to events within ±2 days, and 370
+   of 26,449 matches (1.4%; 3% in 2010, under 1% after 2021) were accepted by the SEC
+   after the 14:30 ET decision on the entry day. The live system could not have read them,
+   so they are now dropped.
+3. **No embargo between train and holdout.** Training events entered in late 2019 hold into
+   2020, so their targets shared prices with the holdout, including the COVID crash. Events
+   entered before 2020 whose 60-session window ends after 2019-12-31 are now used by neither
+   side.
+4. **The own-history norm needed 12 prior releases, not 6.** `shift()` leaves a blank in
+   the first slot of every rolling window, and `np.median` of a window containing a blank
+   is blank. So no company got a z-score until the window slid past that slot, at its
+   13th release, whatever `MIN_PRIOR` said. The dev run on the original four was therefore
+   limited to firms with 12+ prior releases. The window functions now skip blanks, so
+   scoring starts at the 7th release as documented. This adds 2011-2013 events to
+   training, plus the early releases of firms that joined later.
+5. **A zero spread was treated as missing.** Some firms file the same template every
+   quarter: BXP's tone is identical in all 66 releases, and filing gaps of exactly 91 days
+   repeat. With MAD = 0 the z-score came out blank. After fix 4 this still dropped 1%
+   (tone), 15% (non-GAAP) and 17% (latency) of firms with 7+ prior releases. Now a value
+   equal to the norm scores 0. A departure is scaled by the mean absolute deviation
+   (×1.2533) instead. A departure from a norm that has never varied scores the ±5 cap.
+   After fixes 4 and 5, none of the three features is missing for any firm with 7+ prior
+   releases. Both fixes are covered by `tests/test_edgar_features.py`.
