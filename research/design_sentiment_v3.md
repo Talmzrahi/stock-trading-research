@@ -48,13 +48,26 @@ predict a price, and that what it read mostly repeats the price.
 | 3 | predict the announcement reaction from text + surprise | **yes**, small, training years only | out-of-fold fit |
 | 4 | gap = predicted − actual reaction at entry | no | the pre-registered exam |
 
-**Reaction** (the label for idea 1): the stock's return minus SPY from the last close
-before the announcement to the first close the system could trade (the entry close in
-`trader/events.py`). This is fixed now so later layers cannot drift toward whatever fits.
+### Timing (fixed 2026-09-18, `research/v3_labels.py`)
 
-**Gap** (idea 2): predicted reaction − actual reaction, known at the entry close. Layer
-3 must be cross-fitted, meaning each event's prediction comes from a model that never
-saw that event, or the gap is zero by construction.
+**Reaction** (the label for idea 1): the stock's return minus SPY from **the last close
+before the announcement** (the same day's close for after-close releases, the previous
+day's otherwise) to the entry close in `trader/events.py`. Only post-announcement moves
+fall inside the window: 1 session for 99.5% of events, 2 for intraday releases. This is
+fixed now so later layers cannot drift toward whatever fits.
+
+**Gap** (idea 2): predicted reaction − actual reaction. **Correction to the first draft,
+which said "known at the entry close":** the daily run decides at 14:30 ET, and there is
+no free intraday price history. The reaction is therefore only complete after the entry
+close, so **a gap trade enters at the next session's close** (`gap_entry_idx`). That
+costs one day of drift but has no look-ahead. The release must be public by 14:30 ET on
+that day (`readable`; true for 99.9%). Layer 3 must be cross-fitted, meaning each event's
+prediction comes from a model that never saw that event, or the gap is zero by construction.
+
+**Positive control (passed):** 26,131 S&P 500 events. The reaction's rank correlation
+with the earnings surprise is +0.28 overall, and +0.30 / +0.24 / +0.18 for pre-open /
+after-close / intraday releases. Only 7 announcements carry a date-only timestamp. The
+median absolute reaction is 2.85pp.
 
 ## Data
 
@@ -68,6 +81,22 @@ saw that event, or the gap is zero by construction.
   - Download route: index page + exhibit. The combined submission file is built on
     demand for older filings and took up to 18 s each.
 - `data/v3.db`, table `layer0`: per release, the counts per class and the units themselves.
+- `data/v3.db`, table `labels`: per S&P 500 event, the reaction and timing above. The
+  S&P 400/600 exam set is not labelled before its pre-registration.
+
+## Compute budget for layer 1 (measured 2026-09-18)
+
+Real new and edited release sentences have a median of 34 tokens (90th percentile 63).
+On this PC's CPU, batched and length-sorted:
+
+- FinBERT at full precision: **18 sentences/s**
+- FinBERT compressed to 8-bit: **9 sentences/s**, and it disagrees with full precision
+  (rank correlation 0.91), so it is rejected
+
+At roughly 1.3 million new and edited sentences, that is **about 20 hours per BERT-size
+model**, and about 60 for all three v1 models. Layer 1 therefore needs a small, fast
+reader or the big-teaches-small route. The exact sentence count comes from the full
+layer 0 run.
 
 ## Layer 0 (`research/v3_layer0.py`)
 
