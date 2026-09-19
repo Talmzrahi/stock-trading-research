@@ -171,6 +171,25 @@ evidence; it is a check for signs of life.
   +0.56pp (p = 0.34, quarter-clustered). The text's own part of the gap gives −0.15pp
   (p = 0.78). So far the market appears to price the release text on the day.
 
+**Re-run on the full layer 0 (2026-09-19):** 21,493 out-of-sample events from 2013.
+
+| Reaction model | R² | gain vs surprise, by year |
+|---|---|---|
+| surprise only | 0.0711 | — |
+| + tone/guidance, all sentences | 0.0775 | p < 0.001 |
+| + tone/guidance, **changed sentences** | **0.0782** | p < 0.001 |
+| + placebo: boilerplate only | 0.0714 | p = 0.71 |
+
+- **Idea 1 holds**, and with the full data "changed only" edges out "all": layer 0
+  helps even a word-list reader.
+- **Idea 2 still shows nothing.** The gap's quintile spread is +0.57pp (p = 0.19). The
+  text's own part of the gap is **−0.72pp (p = 0.14)**, which is the wrong sign, if
+  anything hinting that the market over-reacts to release text on the day.
+- **Sample size for comparing readers:** the word-list gain that is clear at 21,493
+  events is invisible at 2,000 (reader comparison, first run: R² 0.0629 surprise only,
+  0.0627 with word-list tone, 0.0619 with the MiniLM map). Scaling the t-statistic by
+  √n, about 8,000 releases are needed to detect an effect this size.
+
 **Owner's steer (2026-09-19): develop on samples** (about 2,000 releases), not the full
 data. That makes layer 1 affordable: FinBERT on 2,000 releases' changed sentences takes
 about 1.5 hours instead of about 20. The final exam still uses the full exam set: at
