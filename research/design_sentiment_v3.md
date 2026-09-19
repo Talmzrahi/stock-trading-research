@@ -143,6 +143,29 @@ It ran at `EDITED = 0.5`, before the threshold was set. The full-run figures rep
 - A company's first releases have little or no history, so every unit looks new.
   `n_prior` is stored, and later layers should require `n_prior ≥ PRIOR_K`.
 
+## First end-to-end prototype (2026-09-19, exploratory, development data only)
+
+`research/v3_prototype.py`. The reader is a cheap stand-in: Loughran-McDonald tone plus
+guidance words. The layer-0 output covered about a third of companies (150), which gives
+9,155 out-of-sample S&P 500 events, predicted walk-forward from 2013. This is not
+evidence; it is a check for signs of life.
+
+- **Idea 1 works at a basic level.** Out-of-sample R² for the reaction: surprise alone
+  0.084; plus tone on all sentences 0.092 (gain p < 0.001, by year); plus tone on
+  changed sentences 0.091 (p = 0.002); plus tone on **boilerplate only, the placebo,
+  0.086 (p = 0.22)**. The placebo behaves, so text repeated verbatim carries nothing.
+  With word counts, "changed only" is no better than "all", because repeated sentences
+  only add a per-company constant. Layer 0 should matter for a real reader.
+- **Idea 2 shows no sign of life yet.** The gap's top-minus-bottom quintile drift is
+  +0.56pp (p = 0.34, quarter-clustered). The text's own part of the gap gives −0.15pp
+  (p = 0.78). So far the market appears to price the release text on the day.
+
+**Owner's steer (2026-09-19): develop on samples** (about 2,000 releases), not the full
+data. That makes layer 1 affordable: FinBERT on 2,000 releases' changed sentences takes
+about 1.5 hours instead of about 20. The final exam still uses the full exam set: at
+about ±15% per-event noise, 2,000 events give roughly ±1pp uncertainty on a quintile
+spread, which is too coarse for effects around 0.5pp.
+
 ## Testing plan (to be pre-registered before layer 3 is fitted)
 
 - **Development:** S&P 500 releases. v2 spent the 2020-2026 S&P 500 holdout on its own

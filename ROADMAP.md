@@ -446,6 +446,35 @@ Lesson worth keeping: **check a feature's coverage by group before trusting a sa
 size.** A normaliser that silently returns NaN shrinks the sample without any error, and
 here it did that to a third of events.
 
+## Phase 3b — Sentiment v3, a layered reader — IN PROGRESS (from 2026-09-18)
+
+Design, the owner's decisions, and every choice made along the way:
+[research/design_sentiment_v3.md](research/design_sentiment_v3.md).
+
+A measured review of v1 (the news ensemble) found that its temperature and bias
+adjustments are cosmetic (rank correlation 0.993-0.999 with untuned outputs). The real
+problems: nothing in it was ever fitted to prices, and its news sentiment tracks the
+stock's own prior 10-day return (+0.14) rather than the surprise (−0.002) or the
+announcement move (−0.020). v3 therefore:
+
+- **reads earnings releases, not news.** They are timestamped before the reaction and
+  have 15 years of history.
+- **lets the market label the text:** the target is the announcement reaction, not human
+  sentiment labels.
+- **trades the gap:** text-implied reaction minus actual reaction. The trade enters at
+  the next close, because the 14:30 ET decision cannot see that day's close.
+- **is built in layers,** starting with layer 0: each sentence and table row is labelled
+  boilerplate / template / edited / new against the company's previous 4 releases.
+
+Built: `research/release_text.py` (structure-preserving parser), `edgar_filings.py`
+(`--html-only`, `--set midsmall`), `v3_layer0.py`, `v3_labels.py`, and `v3_prototype.py`
+(a cheap end-to-end pass on development data). **Exam set:** the S&P 400/600 releases,
+in their own `edgar_midsmall.db` / `v3_midsmall.db`, used once, after a pre-registration.
+
+Compute constraint for layer 1: FinBERT reads about 18 sentences/s on this CPU. Roughly
+1.3M new and edited sentences would take about 20 hours per model, so layer 1 needs a
+small reader or the big-teaches-small route.
+
 ## Phase 3 — Add breadth to the fusion layer
 
 Goal: a second signal that passes the gate, so fusion does real work.
