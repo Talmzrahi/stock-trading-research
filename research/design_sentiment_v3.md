@@ -185,6 +185,30 @@ spread, which is too coarse for effects around 0.5pp.
 - **Final exam, once:** S&P 400/600 releases. No v3 layer that touches returns may run on
   them before the pre-registration is committed. Layer 0 can, since it reads no returns.
 
+## Owner's idea: model disagreement and model bias as signals (2026-09-19)
+
+Each reader has its own habits. If FinBERT is very positive where the others are not,
+and FinBERT is known to spike on certain kinds of sentence, that pattern may carry
+information. v1 averaged the models, which destroys exactly this. On v1's news, the
+three models agreed on a label only 53% of the time (correlation 0.70), so about a third
+of each model's variation is its own.
+
+Planned inputs for layer 3. None of these are hand-written rules; the weights are learned
+from the market reaction:
+
+1. **Disagreement:** each model's score relative to the others (signed difference and
+   spread) for the release's changed sentences.
+2. **Bias-corrected score:** each model's score minus what that model usually says about
+   this kind of sentence, learned on training years. This is "own norm" applied to the
+   reader instead of the company.
+3. **Ambiguity hypothesis (idea 2):** releases where the readers disagree are harder to
+   read, may be digested more slowly, and so may show larger gaps and drift. This is to be
+   tested, not assumed.
+
+**Guard:** there are many possible disagreement and bias features, and some will fit
+development data by chance. The set is kept small and is fixed in the pre-registration
+before the exam.
+
 ## Open
 
 - ~~An LLM "teacher" for layer 1~~ **Ruled out by the owner (2026-09-19): the project
