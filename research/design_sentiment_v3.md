@@ -187,8 +187,12 @@ evidence; it is a check for signs of life.
   anything hinting that the market over-reacts to release text on the day.
 - **Sample size for comparing readers:** the word-list gain that is clear at 21,493
   events is invisible at 2,000 (reader comparison, first run: R² 0.0629 surprise only,
-  0.0627 with word-list tone, 0.0619 with the MiniLM map). Scaling the t-statistic by
-  √n, about 8,000 releases are needed to detect an effect this size.
+  0.0627 with word-list tone, 0.0619 with the MiniLM map). **Measured power:** the
+  word-list gain has t = 6.3 on all 23,554 mature releases. In 40 random subsamples per
+  size, it reaches p < 0.05 in **8%** of samples at 2,000 (barely above the 5% false-alarm
+  rate), 25% at 4,000, **85% at 8,000**, and 100% at 12,000. So development comparisons
+  need at least 8,000 releases. Telling two readers apart means detecting the difference
+  between two gains, which is smaller still, so 12,000 is safer.
 
 **Owner's steer (2026-09-19): develop on samples** (about 2,000 releases), not the full
 data. That makes layer 1 affordable: FinBERT on 2,000 releases' changed sentences takes
