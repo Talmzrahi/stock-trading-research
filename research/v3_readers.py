@@ -2,12 +2,16 @@
 #  v3 layer 1 comparison, step 1: five free readers score the same text.
 #
 #  Design: research/design_sentiment_v3.md ("Reader comparison"). The
-#  sample is 2,000 mature S&P 500 releases (development data only), fixed
-#  by seed. What gets read is each release's NEW and EDITED sentences
-#  from layer 0, in document order. Boilerplate and template sentences
-#  are not read.
+#  sample is 8,000 mature S&P 500 releases (development data only), fixed
+#  by seed. It began at 2,000; measured power showed 2,000 detects even a
+#  real text effect only 8% of the time (85% at 8,000), so it was grown to
+#  8,000 as a superset, and nothing already scored was wasted.
 #
-#  Readers, fastest first so results arrive early:
+#  What gets read is each release's NEW and EDITED sentences from layer 0,
+#  in document order. Boilerplate and template sentences are not read.
+#
+#  Readers, fastest first so results arrive early. The default run is the
+#  owner's choice of three (2026-09-19); the other two stay available:
 #    minilm             all-MiniLM-L6-v2: a 384-number "what is this about"
 #                       fingerprint per sentence (mean-pooled, unit length)
 #    distilroberta_fin  lighter financial-mood model: 3 logits
@@ -28,7 +32,7 @@
 #                          of shape (sentences, dims). Resumable: a sleep
 #                          or crash loses at most one chunk.
 #
-#    python research/v3_readers.py            all readers, resumable
+#    python research/v3_readers.py            the default three, resumable
 #    python research/v3_readers.py minilm     one reader
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -48,7 +52,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 ROOT     = Path(__file__).resolve().parent.parent
 V3_DB    = ROOT / "data" / "v3.db"
 ARCHIVE  = ROOT / "data_archive" / "v3_reader_sample.csv.gz"
-SAMPLE_N = 2000
+SAMPLE_N = 8000
 SEED     = 20260919
 BATCH    = 64
 MAX_TOK  = 128          # changed sentences: median 34 tokens, 90th percentile 63
@@ -62,6 +66,7 @@ READERS = {
     "finbert_tone":      ("ldeb/solved-finbert-tone", "mood"),
     "twitter_roberta":   ("cardiffnlp/twitter-roberta-base-sentiment-latest", "mood"),
 }
+DEFAULT = ["minilm", "distilroberta_fin", "finbert"]
 
 
 def changed_sentences(units_blob):
@@ -71,24 +76,29 @@ def changed_sentences(units_blob):
 
 
 def draw_sample(conn):
-    """2,000 mature releases with a readable release and a finite reaction.
-    Drawn once and stored, so every reader sees the same releases."""
+    """SAMPLE_N mature releases with a readable release and a finite
+    reaction. Stored, so every reader sees the same releases. If a smaller
+    sample already exists it is kept whole and topped up with a second
+    seeded draw from the remaining candidates, so it only ever grows."""
     have = conn.execute("SELECT name FROM sqlite_master WHERE name='reader_sample'").fetchone()
-    if have:
-        return pd.read_sql_query("SELECT * FROM reader_sample ORDER BY accession", conn)
+    old = (pd.read_sql_query("SELECT * FROM reader_sample", conn) if have
+           else pd.DataFrame(columns=["accession"]))
+    if len(old) >= SAMPLE_N:
+        return old.sort_values("accession").reset_index(drop=True)
     cand = pd.read_sql_query(
         """SELECT l.accession, l.event_key, l.symbol, l.entry_date, l0.n_prior, l0.units
            FROM labels l JOIN layer0 l0 USING (accession)
            WHERE l0.n_prior >= 4 AND l.readable = 1""", conn)
     cand["n_sent"] = [len(changed_sentences(b)) for b in cand.units]
-    cand = cand[cand.n_sent > 0].drop(columns="units")
-    cand = cand.drop_duplicates("accession")
-    sample = cand.sample(n=SAMPLE_N, random_state=SEED).sort_values("accession")
-    sample.to_sql("reader_sample", conn, index=False)
+    cand = cand[cand.n_sent > 0].drop(columns="units").drop_duplicates("accession")
+    cand = cand[~cand.accession.isin(old.accession)]
+    extra = cand.sample(n=SAMPLE_N - len(old), random_state=SEED + len(old))
+    sample = pd.concat([old, extra], ignore_index=True).sort_values("accession")
+    sample.to_sql("reader_sample", conn, index=False, if_exists="replace")
     conn.commit()
     ARCHIVE.parent.mkdir(exist_ok=True)
     sample.to_csv(ARCHIVE, index=False, compression="gzip")
-    return sample
+    return sample.reset_index(drop=True)
 
 
 def label_order(model):
@@ -162,7 +172,7 @@ def score(conn, name, sample):
 
 def main():
     torch.set_num_threads(THREADS)
-    names = sys.argv[1:] or list(READERS)
+    names = sys.argv[1:] or DEFAULT
     conn = sqlite3.connect(V3_DB, timeout=60)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("""CREATE TABLE IF NOT EXISTS reader_out (
