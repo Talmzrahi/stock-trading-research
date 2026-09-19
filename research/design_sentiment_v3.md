@@ -240,6 +240,14 @@ from the market reaction:
 development data by chance. The set is kept small and is fixed in the pre-registration
 before the exam.
 
+## Exam set downloaded (2026-09-19)
+
+`python research/edgar_filings.py --set midsmall` produced `data/edgar_midsmall.db`: 28,400
+point-in-time S&P 400/600 earnings events, 27,248 (95.9%) matched to an 8-K, and 27,164
+releases stored as structured HTML (99.9% of those fetched; 4 parse failures; 324 MB).
+Only text has been fetched. Nothing that touches exam-set returns has run, and nothing
+will until the pre-registration is committed. Layer 0 may run on it (`--set midsmall`).
+
 ## Open
 
 - ~~An LLM "teacher" for layer 1~~ **Ruled out by the owner (2026-09-19): the project
