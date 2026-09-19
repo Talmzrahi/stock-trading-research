@@ -140,6 +140,17 @@ An earlier trial on 32 companies (1,112 mature releases), before the placeholder
 | headings | 83% | 10% | 1% | 5% |
 
 It ran at `EDITED = 0.5`, before the threshold was set. The full-run figures replace it.
+
+**Full run (2026-09-19):** 26,357 S&P 500 releases, 11.1M units, 0 failures. The
+24,061 mature releases (4+ prior) break down as:
+
+| Unit | boilerplate | template | edited | new | count |
+|---|---|---|---|---|---|
+| sentences | 44% | 15% | 19% | 23% | 3,156,807 |
+| table rows | 25% | 65% | 8% | 3% | 5,580,594 |
+
+**New plus edited sentences come to 1,301,287.** That is the layer 1 reading load for
+full coverage, and about 54 per release.
 - A company's first releases have little or no history, so every unit looks new.
   `n_prior` is stored, and later layers should require `n_prior ≥ PRIOR_K`.
 
