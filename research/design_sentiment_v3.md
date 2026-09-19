@@ -187,6 +187,8 @@ spread, which is too coarse for effects around 0.5pp.
 
 ## Open
 
-- An LLM "teacher" for layer 1 costs money per document, against the free-only rule.
-  Decide once the free models' ceiling is known.
+- ~~An LLM "teacher" for layer 1~~ **Ruled out by the owner (2026-09-19): the project
+  is free and stays free unless the owner says otherwise.** Layer 1 uses free models run
+  locally (FinBERT, which is already cached, or a small free Hugging Face model), trained
+  on samples.
 - The S&P 400/600 releases still need downloading (the machinery exists).
