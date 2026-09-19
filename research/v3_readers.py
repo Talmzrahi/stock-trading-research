@@ -34,6 +34,7 @@
 #
 #    python research/v3_readers.py            the default three, resumable
 #    python research/v3_readers.py minilm     one reader
+#    python research/v3_readers.py finbert --threads=3   one of several side by side
 # ═══════════════════════════════════════════════════════════════════════
 
 import json
@@ -171,8 +172,12 @@ def score(conn, name, sample):
 
 
 def main():
-    torch.set_num_threads(THREADS)
-    names = sys.argv[1:] or DEFAULT
+    # One process per reader, run side by side, shares the 8 cores better
+    # than one process running readers in turn: small batches don't scale
+    # well across many threads. --threads=N splits the cores between them.
+    threads = [int(a.split("=")[1]) for a in sys.argv[1:] if a.startswith("--threads=")]
+    torch.set_num_threads(threads[0] if threads else THREADS)
+    names = [a for a in sys.argv[1:] if not a.startswith("--")] or DEFAULT
     conn = sqlite3.connect(V3_DB, timeout=60)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("""CREATE TABLE IF NOT EXISTS reader_out (

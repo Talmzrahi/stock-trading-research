@@ -98,6 +98,14 @@ model**, and about 60 for all three v1 models. Layer 1 therefore needs a small, 
 reader or the big-teaches-small route. The exact sentence count comes from the full
 layer 0 run.
 
+**Parallel readers do not help on this laptop** (Snapdragon X Plus, 8 cores, measured
+2026-09-19). Three processes, one reader each, with 2/3/3 threads, together reached about
+90% of the speed of running the readers one after another on 6 threads. A fixed thread
+split also starves the longest job (FinBERT would take about 24 h instead of about 7).
+So readers run in sequence; `--threads=N` remains available. Long runs also need AC power
+and the lid open: on battery the Balanced plan throttles the CPU, and the machine entered
+standby mid-run despite the keep-awake hold, which only prevents idle sleep.
+
 ## Layer 0 (`research/v3_layer0.py`)
 
 **Units:** each paragraph sentence (not split after "Inc." / "U.S." / initials), short
