@@ -27,10 +27,8 @@ era-dependent in both samples — expect long flat stretches.
 once overlapping 60-session holds and the picks' higher beta are allowed for. On S&P
 400/600, the quarter-clustered p is 0.021, but the calendar-time alpha is +2.94%/yr with
 p=0.37 (β 1.36). The live strategy's alpha vs SPY is +1.06%/yr, p=0.75. Treat the
-signal as unproven; the paper account is its out-of-time test. For anything with
-overlapping holds, report the calendar-time, market-adjusted test
-(`research/inference_check.py`) alongside date clustering. Whether it becomes part of
-the mandatory gate is pending the owner's decision.
+signal as unproven; the paper account is its out-of-time test. It does not pass the
+upgraded gate below, so it stays in paper trading only: real money would need it to pass.
 
 The simulated account runs on this config. **Real money and the Alpaca switch are the
 owner's decisions**, not automatic (Alpaca needs paper keys in ALPACA_API_KEY /
@@ -39,7 +37,17 @@ ALPACA_SECRET_KEY).
 **The validation gate is mandatory**: any new signal, exit, or sizing rule must pass the
 event-level gate (`research/pead_trailing.py` pattern) and the portfolio gate
 (`research/portfolio_gate.py`, selection rule pre-registered in its header) before it
-reaches `config/strategy.json`.
+reaches `config/strategy.json`. **Since 2026-09-19 (owner's decision), the event-level
+gate also requires**, for anything with overlapping holding periods, a positive
+estimate with p < 0.05 on both:
+
+- **T1:** the same estimate with standard errors clustered by calendar quarter of entry
+- **T2:** calendar-time, market-adjusted alpha: an equal-weighted portfolio of open
+  positions, monthly returns regressed on the matched benchmark, with Newey-West SEs
+
+Both are implemented in `research/inference_check.py` (`quarter_clustered`,
+`calendar_time`, `market_alpha`). Date clustering alone overstated every earlier result
+(ROADMAP Phase 2e).
 
 ## What exists
 

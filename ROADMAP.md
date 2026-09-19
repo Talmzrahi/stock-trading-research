@@ -42,6 +42,15 @@ priorities change; don't let it go stale.
   NLP ensemble is shown to be reliable.
 - **Tripwire alerts, never acts.** A human decides whether the signal has died.
 
+2026-09-19:
+
+- **The gate adds overlap-robust, market-adjusted inference.** For overlapping holding
+  periods, a result must also pass quarter-clustered SEs (T1) and a calendar-time alpha
+  against the matched benchmark (T2), as in `research/inference_check.py`. The current
+  strategy does not pass, so it stays paper-only. See Phase 2e.
+- **The project is free and stays free** unless the owner says otherwise. That covers
+  paid APIs and models (for example an LLM "teacher"), not only data.
+
 ## Phase 0 — Done
 
 - News sentiment backfill ([Main.py](Main.py)): Finnhub company news -> 3-model NLP
