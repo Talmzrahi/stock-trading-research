@@ -481,8 +481,27 @@ Built: `research/release_text.py` (structure-preserving parser), `edgar_filings.
 in their own `edgar_midsmall.db` / `v3_midsmall.db`, used once, after a pre-registration.
 
 Compute constraint for layer 1: FinBERT reads about 18 sentences/s on this CPU. Roughly
-1.3M new and edited sentences would take about 20 hours per model, so layer 1 needs a
-small reader or the big-teaches-small route.
+1.3M new and edited sentences would take about 20 hours per model, so reading is capped
+at each release's first 20 changed sentences — measured to lose nothing, because the news
+sits at the top of a release.
+
+**Reader comparison (2026-09-20, 8,000 development releases).** Explaining the
+announcement reaction beyond the earnings surprise: DistilRoBERTa-finance R² 0.0805,
+FinBERT 0.0793, MiniLM 0.0749 (not significant), word lists 0.0739, surprise alone
+0.0714. Averaging the two mood readers adds nothing; **their disagreement does** (0.0816),
+and everything together reaches 0.0824. But no tradable signal appeared: the gap between
+predicted and actual reaction predicts nothing at 5, 20 or 60 sessions, and the
+prediction itself shows only borderline continuation (+0.95pp top-minus-bottom fifth at
+60 sessions, p=0.07, one hit in a 12-test battery).
+
+**Built anyway, in shadow mode (2026-09-20, owner's decision).** `trader/text/` reads
+every S&P 500 release each day — find the 8-K, check it was public before the decision,
+cache it, classify what is new against the company's own past, read it, score it — and
+`trader/shadow.py` trades those scores on a separate simulated $1,000 account in
+`data/shadow.db`. Every score is kept in `trader.db` `text_scores`, written once, along
+with the releases that could not be scored and why. It does not touch the live account
+and is not in `config/strategy.json`: it is accumulating the out-of-time record the gate
+will need. Turning it on later changes which account places the orders, nothing else.
 
 ## Phase 3 — Add breadth to the fusion layer
 

@@ -286,3 +286,39 @@ will until the pre-registration is committed. Layer 0 may run on it (`--set mids
   locally (FinBERT, which is already cached, or a small free Hugging Face model), trained
   on samples.
 - The S&P 400/600 releases still need downloading (the machinery exists).
+
+## Built: the text signal in production, shadow mode (2026-09-20)
+
+The owner chose to build rather than test further ("we have some good indications this
+could work; if it's really necessary we can test it later"), with scores and a shadow
+portfolio, and everything saved for later pattern-hunting.
+
+**What runs each day** (`trader/text/pipeline.py`, called from `trader/run_daily.py`):
+find the company's 8-K with Item 2.02 within two days of the announcement; refuse to
+score it unless its acceptance time is already past; fetch and cache it in `edgar.db`,
+where it becomes that company's history next quarter; classify every unit against its
+previous four releases; read the first 20 new or edited sentences with the three models;
+build the features; predict the reaction; record the row. Releases that could not be
+scored are recorded too, with the reason, so gaps are visible.
+
+**Where things live.** `trader/text/` holds the production pipeline — `parse.py` and
+`novelty.py` moved there from `research/`, so the daily run and the fitted model use one
+definition of "what is new" and "which sentences get read". The fitted artifact is
+`config/text_model.{json,npz}` (`research/v3_fit.py`); scores go to `trader.db`
+`text_scores`, written once and never revised; the shadow account is `data/shadow.db`.
+
+**The shadow account** (`trader/shadow.py`) uses the same engine, exits and sizing as the
+live account, with the text score in place of the surprise percentile, and a score is
+ranked against the model's training predictions so "top 5%" means on day one what it
+meant in the fit. It never touches `data/trader.db`.
+
+**Checks that passed:** the live path (raw filing → parse → novelty → read) reproduces
+the research pipeline's features to 1e-5, which is the half-precision storage rounding;
+74 tests including the shadow account's bookkeeping.
+
+**Bug found on the first real run:** the shadow account settled through the daily run's
+forward calendar (which extends ~200 days so exits can be scheduled), leaving
+`last_settled` in 2027. It now stops at the last known close. The account was empty, so
+only its own state was wrong.
+
+**Status:** shadow only. The gate in CLAUDE.md is unchanged and unmet.
