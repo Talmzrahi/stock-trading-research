@@ -11,6 +11,7 @@ from .config import ROOT
 
 RESEARCH_DB = ROOT / "data" / "research.db"
 TRADER_DB   = ROOT / "data" / "trader.db"
+EDGAR_DB    = ROOT / "data" / "edgar.db"      # cached earnings releases (trader/text)
 
 
 def connect(path=RESEARCH_DB):

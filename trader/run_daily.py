@@ -20,6 +20,7 @@ import argparse
 import json
 import math
 import os
+import sqlite3
 import sys
 import time
 import traceback
@@ -33,7 +34,7 @@ from . import state as st
 from .alpaca import AlpacaBroker
 from .backtest import market_from
 from .config import ROOT, STRATEGY_FILE, load_config
-from .data import RESEARCH_DB, TRADER_DB, connect, load_closes, load_earnings, load_universe
+from .data import EDGAR_DB, RESEARCH_DB, TRADER_DB, connect, load_closes, load_earnings, load_universe
 from .engine import Engine
 from .market_calendar import ET, is_trading_day, moc_cutoff, next_trading_day, now_et, trading_days
 from .monitor import tripwire_status
@@ -73,7 +74,54 @@ def parse_args(argv):
     p.add_argument("--now", help="override the clock (ET), 'YYYY-MM-DD HH:MM' — for testing")
     p.add_argument("--broker", choices=["sim", "alpaca"], default=os.environ.get("TRADER_BROKER", "sim"),
                    help="simulated ledger (default) or Alpaca paper; env TRADER_BROKER sets the default")
+    p.add_argument("--text", choices=["shadow", "off"], default=os.environ.get("TRADER_TEXT", "shadow"),
+                   help="read today's earnings releases and trade them on the shadow account "
+                        "(default), or skip the text signal entirely")
     return p.parse_args(argv)
+
+
+def run_text_signal(args, cfg, cal, market, sconn, rconn, now, today, notes):
+    """Read today's releases, score them, and let the shadow account trade
+    them. Never touches the live account: the text signal has not passed
+    the gate in CLAUDE.md, so it runs on its own books in data/shadow.db."""
+    from .shadow import run_shadow
+    from .text import store as text_store
+    from .text.model import TextModel
+    from .text.pipeline import score_pending
+    from .text.readers import Readers
+
+    model = TextModel.load()
+    if model is None:
+        notes.append("Text signal: no fitted model in config/ — skipped. "
+                     "Run research/v3_fit.py to build one.")
+        return None
+
+    i = int(cal.searchsorted(today, side="right")) - 1        # last session on or before today
+    ev = market.events
+    todo = ev[ev.pit & (ev.entry_idx <= i) & (ev.entry_idx >= i - cfg.max_late_days)].copy()
+    todo["sue"] = (todo.eps_actual - todo.eps_estimate) / todo.price
+    cik_of = {s: c for s, c in rconn.execute(
+        "SELECT symbol, firm FROM universe_ids WHERE firm IS NOT NULL AND firm NOT LIKE 'SYM:%'")}
+
+    scores_conn = sqlite3.connect(":memory:") if args.dry_run else sconn
+    text_store.init_scores(scores_conn)
+    edgar = text_store.open_edgar(EDGAR_DB)
+    try:
+        rows = score_pending(todo, edgar=edgar, scores=scores_conn, model=model,
+                             readers=Readers(), cik_of=cik_of, now=now, log=print)
+    finally:
+        edgar.close()
+
+    shadow = None
+    if args.dry_run:
+        notes.append("Text signal: dry run — releases were read, but no score was saved and the "
+                     "shadow account was not advanced.")
+    else:
+        shadow = run_shadow(cfg, cal, market.closes, market.events,
+                            text_store.percentiles(scores_conn), today)
+    return {"today": rows, "shadow": shadow,
+            "model": {k: model.meta.get(k) for k in ("fitted", "n_releases", "oof_r2_with_text",
+                                                     "oof_r2_surprise_only", "readers")}}
 
 
 def refresh_data(rconn, cfg, now, held, full, notes):
@@ -271,6 +319,15 @@ def run(args):
         st.record_run(sconn, today_s, now.isoformat(), run_status)
         sconn.commit()
 
+    # ── Text signal, on its own books ─────────────────────────────────
+    text = None
+    if args.text != "off":
+        try:
+            text = run_text_signal(args, cfg, cal, market, sconn, rconn, now, today, notes)
+        except Exception as e:                       # the live account must not depend on it
+            warnings.append(f"Text signal failed ({type(e).__name__}: {e}); live account unaffected.")
+            traceback.print_exc()
+
     # ── Report ────────────────────────────────────────────────────────
     li = cal.get_loc(last_close)
     h = ledger.holdings()
@@ -311,7 +368,7 @@ def run(args):
         broker_label="Alpaca paper" if alpaca else "simulated broker",
         order_style="market day orders near the close" if alpaca else "market-on-close",
         cfg=cfg, decisions=decisions, submitted=submitted, fills=fills, positions=positions,
-        trades=trades, tripwire=trip, expected_alpha=expected,
+        trades=trades, tripwire=trip, expected_alpha=expected, text=text,
         upcoming=refresh.upcoming_reports(rconn, members, today.date()),
         account=dict(equity=equity, cash=ledger.cash(), stocks=stocks, bench=bv, initial=initial,
                      inception=f"{inception:%Y-%m-%d}", ret_since=equity / initial - 1,

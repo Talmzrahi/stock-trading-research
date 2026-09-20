@@ -31,6 +31,62 @@ def table(headers, rows):
     return out
 
 
+def rank(percentile):
+    """Where a score sits among the model's training predictions."""
+    if percentile is None or (isinstance(percentile, float) and math.isnan(percentile)):
+        return "—"
+    return (f"top {(1 - percentile) * 100:.0f}%" if percentile >= 0.5
+            else f"bottom {percentile * 100:.0f}%")
+
+
+def text_section(text):
+    """The text signal's own record: what it read today and how its
+    separate shadow account is doing. It does not trade the live money —
+    it is collecting the out-of-time evidence the gate will need."""
+    if not text:
+        return []
+    L = ["## Text signal (shadow — does not trade this account)", ""]
+    model = text.get("model") or {}
+    if model:
+        L += [f"_Model fitted {model.get('fitted')} on {model.get('n_releases'):,} releases · "
+              f"explains {model.get('oof_r2_with_text'):.4f} of the announcement move vs "
+              f"{model.get('oof_r2_surprise_only'):.4f} from the surprise alone · "
+              f"readers: {', '.join(model.get('readers') or [])}_", ""]
+
+    rows = text.get("today") or []
+    scored = [r for r in rows if r["status"] == "scored"]
+    if scored:
+        L += table(["Symbol", "New sentences", "Predicted move", "Rank vs training"],
+                   [[r["symbol"], r["n_sentences"], pct(r["prediction"]),
+                     rank(r["percentile"])]
+                    for r in sorted(scored, key=lambda r: -r["prediction"])])
+        L.append("")
+    skipped = [r for r in rows if r["status"] != "scored"]
+    if skipped:
+        why = {}
+        for r in skipped:
+            why[r["status"]] = why.get(r["status"], 0) + 1
+        L += [f"{len(skipped)} release(s) not scored: "
+              + ", ".join(f"{k.replace('_', ' ')} {v}" for k, v in sorted(why.items())), ""]
+    if not rows:
+        L += ["No new releases to read today.", ""]
+
+    sh = text.get("shadow")
+    if sh:
+        L += table(["Shadow account", ""], [
+            ["Equity", f"{money(sh['equity'])} (started {money(sh['initial'])} on {sh['inception']})"],
+            ["Since inception", pct(sh["equity"] / sh["initial"] - 1)],
+            ["Positions", f"{sh['positions']} open, {sh['pending']} order(s) pending"],
+            ["Closed trades", sh["trades"]],
+        ])
+        acts = [d for d in sh["decisions"] if d.action != "below_cutoff"]
+        if acts:
+            L += ["", "Shadow decisions today: "
+                  + ", ".join(f"{ACTIONS.get(d.action, d.action)} {d.symbol}" for d in acts)]
+        L.append("")
+    return L
+
+
 def render(ctx):
     cfg, acct = ctx["cfg"], ctx["account"]
     stop = "off" if not cfg.stop_k else f"{cfg.stop_k:g} daily sd"
@@ -127,6 +183,8 @@ def render(ctx):
     else:
         L.append("No band file — run `python research/portfolio_gate.py`.")
     L.append("")
+
+    L += text_section(ctx.get("text"))
 
     up = ctx["upcoming"]
     L += ["## Reporting in the next 7 days", ""]
