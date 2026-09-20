@@ -1,0 +1,15 @@
+8,000 development releases, 2011-04-13 → 2026-09-14
+text features used: 13
+
+── Does the reader predict what happens after? (top minus bottom fifth) ──
+   signal                                        5 sessions           20 sessions           60 sessions
+   gap (market under-reacted)              -0.03pp (p=0.83)      +0.16pp (p=0.52)      +0.07pp (p=0.88)
+   score (continuation)                    +0.26pp (p=0.10)      +0.59pp (p=0.05)      +0.95pp (p=0.07)
+
+── Among the top-5% surprise events the strategy trades (374 here) ──
+    5 sessions: better-read half minus worse +0.20pp (p=0.85), mean +0.20pp
+   20 sessions: better-read half minus worse -4.32pp (p=0.03), mean +1.34pp
+   60 sessions: better-read half minus worse -2.15pp (p=0.54), mean +1.51pp
+
+12 tests on data already looked at many times. Nothing here is evidence:
+anything that survives is a candidate for the one-shot exam.
