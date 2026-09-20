@@ -62,8 +62,13 @@ def run_shadow(cfg, cal, closes, base_events, scores, today, db_path=SHADOW_DB, 
     ff, col = eng.ff, eng.col
     price = lambda row: (lambda s: ff[row][col[s]] if s in col else None)
 
-    # Sessions whose close is known: settle the orders placed for them.
-    known = cal[(cal > last_settled) & (cal < (today if today_idx is not None else cal[-1]))]
+    # Only sessions whose close is actually known can be settled. The daily
+    # run's calendar runs ~200 days past today so exits can be scheduled;
+    # settling into it would mark the account through dates that have not
+    # happened and leave last_settled in the future.
+    last_close = closes[cfg.benchmark].last_valid_index()
+    horizon = min(pd.Timestamp(today), pd.Timestamp(last_close) + pd.Timedelta(days=1))
+    known = cal[(cal > last_settled) & (cal < horizon)]
     marks = []
     for d in known:
         t = cal.get_loc(d)
@@ -79,7 +84,7 @@ def run_shadow(cfg, cal, closes, base_events, scores, today, db_path=SHADOW_DB, 
 
     decisions = []
     today_s = pd.Timestamp(today).strftime("%Y-%m-%d")
-    if today_idx is not None and st.run_status(conn, today_s) != "decided":
+    if today_idx is not None and today_idx > 0 and st.run_status(conn, today_s) != "decided":
         decisions = eng.step(today_idx, state, ledger, price(today_idx - 1))
 
     st.save_ledger(conn, ledger)

@@ -162,6 +162,20 @@ class ShadowAccountTest(unittest.TestCase):
         last = self.run_days({"AAA|1": 0.10}, [20, 21, 22])[-1]
         self.assertEqual(last["positions"], 0)
 
+    def test_it_does_not_settle_into_the_future(self):
+        # the live run's calendar extends past the prices, so exits can be
+        # scheduled; the account must stop at the last known close
+        closes = self.closes.copy()
+        closes.iloc[30:] = np.nan
+        run_shadow(CFG, self.cal, closes, self.events, {"AAA|1": 0.99}, self.cal[25],
+                   db_path=self.db, log=lambda *_: None)
+        conn = sqlite3.connect(self.db)
+        try:
+            last = conn.execute("SELECT value FROM account WHERE key='last_settled'").fetchone()[0]
+        finally:
+            conn.close()          # Windows will not delete the temp dir while it is open
+        self.assertLessEqual(pd.Timestamp(last), self.cal[29])
+
     def test_the_account_persists_between_runs(self):
         first = self.run_days({"AAA|1": 0.99}, [20])[0]
         again = self.run_days({"AAA|1": 0.99}, [21, 22])[-1]
