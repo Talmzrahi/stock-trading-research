@@ -74,7 +74,7 @@ median absolute reaction is 2.85pp.
 - `data/edgar.db`, table `release_html`: each release's EX-99 exhibit as compact HTML.
   Styling is stripped; paragraphs, tables, bold and superscripts are kept. It is the same
   document v2 read (100% word overlap checked on samples), and about 350 MB for all
-  26,358. Parser: `research/release_text.py`, with tests in `tests/test_release_text.py`.
+  26,358. Parser: `trader/text/parse.py` (moved there when the live pipeline was built), with tests in `tests/test_release_text.py`.
   - Why: v2's stored text was one flattened line per release. Paragraphs were merged,
     tables were smeared into number strings, and old Windows-1252 quotes and dashes were
     deleted. Layer 0 needs real pieces.
