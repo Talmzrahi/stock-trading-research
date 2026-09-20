@@ -2,8 +2,9 @@ import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "research"))
-from v3_layer0 import classify_company, max_similarity, sentences, template_key, word_pairs  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from trader.text.novelty import (classify_company, max_similarity, sentences,  # noqa: E402
+                                 template_key, word_pairs)
 
 
 def release(*paragraphs, rows=()):

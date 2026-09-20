@@ -45,6 +45,7 @@
 #    python research/v3_readers.py            the default three, resumable
 #    python research/v3_readers.py minilm     one reader
 #    python research/v3_readers.py finbert --threads=3   one of several side by side
+#    python research/v3_readers.py --all      every mature development release
 # ═══════════════════════════════════════════════════════════════════════
 
 import json
@@ -61,6 +62,8 @@ import torch
 sys.stdout.reconfigure(encoding="utf-8")
 
 ROOT     = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+from trader.text.novelty import changed_sentences as novelty_sentences  # noqa: E402
 V3_DB    = ROOT / "data" / "v3.db"
 ARCHIVE  = ROOT / "data_archive" / "v3_reader_sample.csv.gz"
 SAMPLE_N = 8000
@@ -82,22 +85,19 @@ DEFAULT = ["minilm", "distilroberta_fin", "finbert"]
 
 
 def changed_sentences(units_blob, cap=CAP):
-    """The sentences layer 1 reads: the first `cap` new or edited ones, in
-    document order."""
-    out = [u[5] for u in json.loads(zlib.decompress(units_blob))
-           if u[1] == "s" and u[2] in ("new", "edited")]
-    return out[:cap] if cap else out
+    """The sentences layer 1 reads, from a stored layer 0 record."""
+    return novelty_sentences(json.loads(zlib.decompress(units_blob)), cap)
 
 
-def draw_sample(conn):
-    """SAMPLE_N mature releases with a readable release and a finite
-    reaction. Stored, so every reader sees the same releases. If a smaller
-    sample already exists it is kept whole and topped up with a second
-    seeded draw from the remaining candidates, so it only ever grows."""
+def draw_sample(conn, want=SAMPLE_N):
+    """`want` mature releases with a readable release and a finite reaction,
+    or every candidate when `want` is None. Stored, so every reader sees the
+    same releases. A smaller existing sample is kept whole and topped up by a
+    second seeded draw from the rest, so the sample only ever grows."""
     have = conn.execute("SELECT name FROM sqlite_master WHERE name='reader_sample'").fetchone()
     old = (pd.read_sql_query("SELECT * FROM reader_sample", conn) if have
            else pd.DataFrame(columns=["accession"]))
-    if len(old) >= SAMPLE_N:
+    if want is not None and len(old) >= want:
         return old.sort_values("accession").reset_index(drop=True)
     cand = pd.read_sql_query(
         """SELECT l.accession, l.event_key, l.symbol, l.entry_date, l0.n_prior, l0.units
@@ -106,7 +106,12 @@ def draw_sample(conn):
     cand["n_sent"] = [len(changed_sentences(b)) for b in cand.units]
     cand = cand[cand.n_sent > 0].drop(columns="units").drop_duplicates("accession")
     cand = cand[~cand.accession.isin(old.accession)]
-    extra = cand.sample(n=SAMPLE_N - len(old), random_state=SEED + len(old))
+    if want is None:
+        extra = cand
+    elif want - len(old) >= len(cand):
+        extra = cand
+    else:
+        extra = cand.sample(n=want - len(old), random_state=SEED + len(old))
     sample = pd.concat([old, extra], ignore_index=True).sort_values("accession")
     sample.to_sql("reader_sample", conn, index=False, if_exists="replace")
     conn.commit()
@@ -191,12 +196,13 @@ def main():
     threads = [int(a.split("=")[1]) for a in sys.argv[1:] if a.startswith("--threads=")]
     torch.set_num_threads(threads[0] if threads else THREADS)
     names = [a for a in sys.argv[1:] if not a.startswith("--")] or DEFAULT
+    want = None if "--all" in sys.argv[1:] else SAMPLE_N
     conn = sqlite3.connect(V3_DB, timeout=60)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("""CREATE TABLE IF NOT EXISTS reader_out (
                         reader TEXT, accession TEXT, n INTEGER, dim INTEGER, data BLOB,
                         PRIMARY KEY (reader, accession))""")
-    sample = draw_sample(conn)
+    sample = draw_sample(conn, want)
     print(f"Sample: {len(sample):,} releases, {int(sample.n_sent.sum()):,} changed sentences "
           f"({sample.entry_date.min()} → {sample.entry_date.max()})", flush=True)
     for name in names:

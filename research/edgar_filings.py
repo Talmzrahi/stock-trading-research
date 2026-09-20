@@ -52,7 +52,7 @@ sys.path.insert(0, str(ROOT))
 from trader.data import RESEARCH_DB, load_earnings, load_universe  # noqa: E402
 from trader.events import point_in_time  # noqa: E402
 from trader.market_calendar import ET  # noqa: E402
-from release_text import compact_html, exhibit  # noqa: E402
+from trader.text.parse import compact_html, exhibit  # noqa: E402
 
 # The SEC's acceptanceDateTime really is UTC despite the ambiguity around
 # its 'Z' suffix: across a sample the hours cluster at 11-13 and 20-21,

@@ -2,8 +2,8 @@ import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "research"))
-from release_text import blocks, compact_html, exhibit  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from trader.text.parse import blocks, compact_html, exhibit  # noqa: E402
 
 
 def parse(html):
