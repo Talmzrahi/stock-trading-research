@@ -1,13 +1,16 @@
-Readers complete on the sample: minilm
+Readers complete on the sample: minilm, distilroberta_fin
 Sample: 8,000 S&P 500 releases, 2011-04-12 → 2026-09-11
    minilm map: penalty chosen per fold [10.0, 10.0, 10.0, 10.0, 10.0]
 
 ── Idea 1: out-of-fold fit to the announcement reaction (8,000 releases, 5 year-block folds) ──
    model                                                              R²   rank     gain vs surprise, by year
    surprise only                                                  0.0714  0.275                              
-   + word-list tone (prototype's reader)                          0.0733  0.277            +0.05bp² (p=0.127)
-   + minilm (market-labelled fingerprint)                         0.0753  0.280            +0.11bp² (p=0.033)
+   + word-list tone (prototype's reader)                          0.0739  0.278            +0.07bp² (p=0.045)
+   + distilroberta_fin                                            0.0805  0.285            +0.27bp² (p=0.000)
+   + minilm (market-labelled fingerprint)                         0.0749  0.280            +0.10bp² (p=0.157)
+   + all mood readers + minilm                                    0.0811  0.287            +0.28bp² (p=0.001)
+   + everything (moods, minilm, disagreement, bias-corrected)     0.0814  0.287            +0.29bp² (p=0.000)
 
 ── Idea 2 (exploratory, ~±1pp noise at this size): gap → 60-session drift ──
    surprise only: drift by gap quintile -0.48 -0.10 -0.74 -0.41 -0.56 pp; top − bottom -0.08pp (p=0.877)
-   + minilm (market-labelled fingerprint): drift by gap quintile -0.57 -0.16 -0.54 -0.51 -0.50 pp; top − bottom +0.07pp (p=0.894)
+   + everything (moods, minilm, disagreement, bias-corrected): drift by gap quintile -0.32 -0.33 -0.90 -0.39 -0.35 pp; top − bottom -0.04pp (p=0.934)
