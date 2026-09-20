@@ -97,8 +97,8 @@ Use the venv interpreter — the system `python` has no pandas.
 .venv\Scripts\python.exe -m trader.run_daily --dry-run      # decide + report, save nothing
 .venv\Scripts\python.exe -m unittest discover -s tests -t .  # tests (stdlib unittest)
 .venv\Scripts\python.exe research\portfolio_gate.py         # re-select strategy + tripwire band
-.venv\Scripts\python.exe research3_readers.py             # score releases with the readers
-.venv\Scripts\python.exe research3_fit.py                 # refit config/text_model.*
+.venv\Scripts\python.exe research\v3_readers.py             # score releases with the readers
+.venv\Scripts\python.exe research\v3_fit.py                 # refit config/text_model.*
 ```
 
 Reports go to `reports/` (gitignored). Deleting `data/trader.db` restarts the paper
