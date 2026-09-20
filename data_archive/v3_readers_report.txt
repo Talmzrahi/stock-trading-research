@@ -1,4 +1,4 @@
-Readers complete on the sample: minilm, distilroberta_fin
+Readers complete on the sample: minilm, distilroberta_fin, finbert
 Sample: 8,000 S&P 500 releases, 2011-04-12 → 2026-09-11
    minilm map: penalty chosen per fold [10.0, 10.0, 10.0, 10.0, 10.0]
 
@@ -7,10 +7,15 @@ Sample: 8,000 S&P 500 releases, 2011-04-12 → 2026-09-11
    surprise only                                                  0.0714  0.275                              
    + word-list tone (prototype's reader)                          0.0739  0.278            +0.07bp² (p=0.045)
    + distilroberta_fin                                            0.0805  0.285            +0.27bp² (p=0.000)
+   + finbert                                                      0.0793  0.285            +0.23bp² (p=0.001)
    + minilm (market-labelled fingerprint)                         0.0749  0.280            +0.10bp² (p=0.157)
-   + all mood readers + minilm                                    0.0811  0.287            +0.28bp² (p=0.001)
-   + everything (moods, minilm, disagreement, bias-corrected)     0.0814  0.287            +0.29bp² (p=0.000)
+   + all mood readers                                             0.0805  0.285            +0.27bp² (p=0.000)
+   + all mood readers + disagreement                              0.0816  0.287            +0.30bp² (p=0.000)
+   + all mood readers + minilm                                    0.0810  0.287            +0.28bp² (p=0.001)
+   + everything (moods, minilm, disagreement, bias-corrected)     0.0824  0.289            +0.32bp² (p=0.000)
 
 ── Idea 2 (exploratory, ~±1pp noise at this size): gap → 60-session drift ──
    surprise only: drift by gap quintile -0.48 -0.10 -0.74 -0.41 -0.56 pp; top − bottom -0.08pp (p=0.877)
-   + everything (moods, minilm, disagreement, bias-corrected): drift by gap quintile -0.32 -0.33 -0.90 -0.39 -0.35 pp; top − bottom -0.04pp (p=0.934)
+   + everything (moods, minilm, disagreement, bias-corrected): drift by gap quintile -0.39 -0.38 -0.74 -0.43 -0.34 pp; top − bottom +0.05pp (p=0.918)
+   readers AGREE (low spread)       gap vs drift rank corr -0.019  (n=3,916)
+   readers DISAGREE (high spread)   gap vs drift rank corr +0.002  (n=3,945)

@@ -240,6 +240,37 @@ from the market reaction:
 development data by chance. The set is kept small and is fixed in the pre-registration
 before the exam.
 
+## Reader comparison result (2026-09-20, development data)
+
+8,000 releases, first 20 changed sentences each, out-of-fold over 5 year blocks.
+Report: `data_archive/v3_readers_report.txt`; features: `v3_reader_features.csv.gz`.
+
+| Reader | R² | gain vs surprise |
+|---|---|---|
+| surprise only | 0.0714 | — |
+| word-list tone | 0.0739 | p = 0.045 |
+| **distilroberta_fin** | **0.0805** | p < 0.001 |
+| finbert | 0.0793 | p = 0.001 |
+| minilm (market-labelled fingerprint) | 0.0749 | p = 0.157 |
+| both mood readers | 0.0805 | p < 0.001 |
+| both + disagreement (owner's idea) | 0.0816 | p < 0.001 |
+| everything (+ minilm, + bias-corrected) | **0.0824** | p < 0.001 |
+
+- **The 330 MB DistilRoBERTa beats the 440 MB FinBERT**, at half the depth and twice the
+  speed. Both beat the word list by 3-4x.
+- **Averaging the two mood readers buys nothing** (0.0805, identical to the better one
+  alone). What pays is **their disagreement** (+0.0011 R², about half a word-list reader's
+  entire contribution). v1 averaged its models and destroyed exactly this.
+- **MiniLM alone is weak**: it captures what a sentence is about, not whether it is good
+  news. It still contributes inside the full set, and its fingerprints are what make the
+  bias-corrected scores possible.
+- Together the text explains about 15% more of the announcement reaction than the
+  surprise alone.
+- **Idea 2 remains dead.** The gap does not predict drift (top-minus-bottom +0.05pp,
+  p = 0.92). The ambiguity hypothesis fails too: gap-vs-drift rank correlation is +0.002
+  where readers disagree and −0.019 where they agree. A better reader of the announcement
+  does not produce a tradable drift signal.
+
 ## Exam set downloaded (2026-09-19)
 
 `python research/edgar_filings.py --set midsmall` produced `data/edgar_midsmall.db`: 28,400
