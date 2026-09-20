@@ -54,7 +54,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "research"))
 from trader.backtest import load_market  # noqa: E402
 from trader.config import load_config  # noqa: E402
-from v3_readers import READERS, changed_sentences  # noqa: E402
+from v3_readers import CAP, READERS, changed_sentences  # noqa: E402
 
 V3_DB    = ROOT / "data" / "v3.db"
 WORDS    = ROOT / "data_archive" / "loughran_mcdonald.json.gz"
@@ -77,7 +77,7 @@ def load_outputs(conn, sample):
         if len(rows) < len(sample):
             continue
         out[name] = {a: np.frombuffer(zlib.decompress(d), dtype=np.float16)
-                     .reshape(n, dim).astype(np.float32) for a, n, dim, d in rows}
+                     .reshape(n, dim).astype(np.float32)[:CAP] for a, n, dim, d in rows}
     return out
 
 

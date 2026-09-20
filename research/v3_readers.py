@@ -7,8 +7,18 @@
 #  real text effect only 8% of the time (85% at 8,000), so it was grown to
 #  8,000 as a superset, and nothing already scored was wasted.
 #
-#  What gets read is each release's NEW and EDITED sentences from layer 0,
-#  in document order. Boilerplate and template sentences are not read.
+#  What gets read is each release's first CAP NEW or EDITED sentences from
+#  layer 0, in document order. Boilerplate and template sentences are not
+#  read at all.
+#
+#  The cap is set at 20 because the news sits at the top of a release —
+#  headline, highlights, the CEO quote, guidance — and the rest is mostly
+#  legal and reconciliation text. Measured with MiniLM, which had scored
+#  every sentence (8,000 releases, median 47 sentences): R² 0.0753 reading
+#  all, 0.0754 at 30, 0.0749 at 20, 0.0773 at 10, 0.0732 at 5. Flat from 10
+#  up, so 20 is a safe middle at about a third of the compute. 10 scored
+#  best, but picking the best on development data is how noise becomes a
+#  "finding", so it was not chosen.
 #
 #  Readers, fastest first so results arrive early. The default run is the
 #  owner's choice of three (2026-09-19); the other two stay available:
@@ -58,6 +68,7 @@ SEED     = 20260919
 BATCH    = 64
 MAX_TOK  = 128          # changed sentences: median 34 tokens, 90th percentile 63
 CHUNK    = 25           # releases per commit
+CAP      = 20           # sentences read per release; see below
 THREADS  = 6
 
 READERS = {
@@ -70,10 +81,12 @@ READERS = {
 DEFAULT = ["minilm", "distilroberta_fin", "finbert"]
 
 
-def changed_sentences(units_blob):
-    """The sentences layer 1 reads: new and edited, in document order."""
-    return [u[5] for u in json.loads(zlib.decompress(units_blob))
-            if u[1] == "s" and u[2] in ("new", "edited")]
+def changed_sentences(units_blob, cap=CAP):
+    """The sentences layer 1 reads: the first `cap` new or edited ones, in
+    document order."""
+    out = [u[5] for u in json.loads(zlib.decompress(units_blob))
+           if u[1] == "s" and u[2] in ("new", "edited")]
+    return out[:cap] if cap else out
 
 
 def draw_sample(conn):
