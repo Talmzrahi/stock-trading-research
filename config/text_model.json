@@ -1,0 +1,43 @@
+{
+  "features": [
+    "sue_w",
+    "conviction",
+    "distilroberta_fin_biascorr",
+    "distilroberta_fin_dev",
+    "distilroberta_fin_mean",
+    "distilroberta_fin_neg",
+    "distilroberta_fin_pos",
+    "finbert_biascorr",
+    "finbert_dev",
+    "finbert_mean",
+    "finbert_neg",
+    "finbert_pos",
+    "minilm_map",
+    "spread"
+  ],
+  "maps": [
+    "habit_distilroberta_fin",
+    "habit_finbert",
+    "minilm_map"
+  ],
+  "sue_winsor": [
+    -0.010525816512725009,
+    0.01402167877586937
+  ],
+  "fitted": "2026-09-20",
+  "commit": "e71e368",
+  "readers": [
+    "minilm",
+    "distilroberta_fin",
+    "finbert"
+  ],
+  "cap": 20,
+  "n_releases": 8000,
+  "train_start": "2011-04-12",
+  "train_end": "2026-09-11",
+  "alpha": 10.0,
+  "oof_r2_surprise_only": 0.07135,
+  "oof_r2_with_text": 0.08244,
+  "target": "announcement reaction: stock minus SPY, last close before the release to the first tradable close",
+  "note": "shadow mode only until it passes the gate in CLAUDE.md"
+}
