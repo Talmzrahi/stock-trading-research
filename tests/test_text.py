@@ -115,6 +115,12 @@ class ScoreStoreTest(unittest.TestCase):
         store.record(self.conn, self.row("AAA|2026-09-20", -0.09, 0.01))
         self.assertEqual(store.percentiles(self.conn), {"AAA|2026-09-20": 0.97})
 
+    def test_the_model_that_produced_a_score_is_stamped(self):
+        store.record(self.conn, {**self.row("AAA|2026-09-20", 0.02, 0.97),
+                                 "model": "2026-09-21+78bb78b"})
+        stamp = self.conn.execute("SELECT model FROM text_scores").fetchone()[0]
+        self.assertEqual(stamp, "2026-09-21+78bb78b")
+
     def test_unscored_releases_are_recorded_too(self):
         store.record(self.conn, {**self.row("BBB|2026-09-20", None, None, "no_filing"),
                                  "n_sentences": None, "features": None})

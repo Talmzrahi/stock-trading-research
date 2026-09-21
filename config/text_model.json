@@ -21,23 +21,23 @@
     "minilm_map"
   ],
   "sue_winsor": [
-    -0.010525816512725009,
-    0.01402167877586937
+    -0.010474552696720695,
+    0.014344143833774685
   ],
-  "fitted": "2026-09-20",
-  "commit": "e71e368",
+  "fitted": "2026-09-21",
+  "commit": "78bb78b",
   "readers": [
     "minilm",
     "distilroberta_fin",
     "finbert"
   ],
   "cap": 20,
-  "n_releases": 8000,
-  "train_start": "2011-04-12",
+  "n_releases": 23997,
+  "train_start": "2011-04-07",
   "train_end": "2026-09-11",
   "alpha": 10.0,
-  "oof_r2_surprise_only": 0.07135,
-  "oof_r2_with_text": 0.08244,
+  "oof_r2_surprise_only": 0.07159,
+  "oof_r2_with_text": 0.08531,
   "target": "announcement reaction: stock minus SPY, last close before the release to the first tradable close",
   "note": "shadow mode only until it passes the gate in CLAUDE.md"
 }

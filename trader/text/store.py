@@ -8,7 +8,9 @@
 #                       day it was scored. Never overwritten — a score is
 #                       evidence about what was knowable that afternoon,
 #                       and re-reading it later with a better model would
-#                       destroy exactly the record worth keeping.
+#                       destroy exactly the record worth keeping. Each row
+#                       stamps the model that produced it, because the
+#                       model is refitted as more releases are scored.
 #
 #  Everything is stored, including releases the model could not score and
 #  why, so the gaps are visible rather than silently missing.
@@ -34,6 +36,7 @@ SCORES_SCHEMA = """
         n_sentences INTEGER,
         prediction  REAL,
         percentile  REAL,
+        model       TEXT,
         features    TEXT);
     CREATE INDEX IF NOT EXISTS ix_text_scores_date ON text_scores(entry_date);
 """
@@ -41,6 +44,8 @@ SCORES_SCHEMA = """
 
 def init_scores(conn):
     conn.executescript(SCORES_SCHEMA)
+    if "model" not in {r[1] for r in conn.execute("PRAGMA table_info(text_scores)")}:
+        conn.execute("ALTER TABLE text_scores ADD COLUMN model TEXT")   # pre-stamp databases
     conn.commit()
 
 
@@ -53,10 +58,11 @@ def record(conn, row):
     conn.execute(
         """INSERT OR IGNORE INTO text_scores
            (event_key, scored_on, symbol, cik, accession, ann_date, entry_date,
-            status, n_sentences, prediction, percentile, features)
+            status, n_sentences, prediction, percentile, model, features)
            VALUES (:event_key, :scored_on, :symbol, :cik, :accession, :ann_date, :entry_date,
-                   :status, :n_sentences, :prediction, :percentile, :features)""",
-        {**row, "features": json.dumps(row.get("features")) if row.get("features") else None})
+                   :status, :n_sentences, :prediction, :percentile, :model, :features)""",
+        {"model": None, **row,
+         "features": json.dumps(row.get("features")) if row.get("features") else None})
     conn.commit()
 
 

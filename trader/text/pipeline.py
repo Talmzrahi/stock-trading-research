@@ -102,6 +102,7 @@ def score_pending(events, *, edgar, scores, model, readers, cik_of, now, log=pri
                "entry_date": pd.Timestamp(event["entry_date"]).strftime("%Y-%m-%d"),
                "status": status, "n_sentences": extra.get("n_sentences"),
                "prediction": extra.get("prediction"), "percentile": extra.get("percentile"),
+               "model": f"{model.meta.get('fitted')}+{model.meta.get('commit')}",
                "features": extra.get("features")}
         record(scores, row)
         written.append(row)
