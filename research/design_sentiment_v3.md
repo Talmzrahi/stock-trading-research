@@ -322,3 +322,41 @@ forward calendar (which extends ~200 days so exits can be scheduled), leaving
 only its own state was wrong.
 
 **Status:** shadow only. The gate in CLAUDE.md is unchanged and unmet.
+
+## Full development data (2026-09-21): the reader improves, the trade does not
+
+All 23,997 mature S&P 500 releases are now scored by all three readers.
+
+**Reading the announcement (idea 1) got better, and the ranking changed.** Out-of-fold R²
+on the reaction: surprise alone 0.0716; MiniLM **0.0819**; DistilRoBERTa 0.0813; FinBERT
+0.0798; word lists 0.0748; everything together **0.0853**. MiniLM went from worst at 8,000
+releases (0.0749, not significant) to best at 24,000 — its 384-number map needs data. The
+disagreement feature's contribution shrank from +0.0011 to +0.0001, so most of that
+earlier gain was noise.
+
+**The continuation result strengthened, then died under inspection.** Top-minus-bottom
+fifth of the text score: +0.13pp at 5 sessions (p=0.09), +0.42pp at 20 (p=0.02), **+1.12pp
+at 60 (p<0.005)**, against +0.26/+0.59/+0.95 at 8,000 releases. But by decile, the mean
+60-session excess return vs SPY is:
+
+| decile | 1 | 2-8 | 9 | 10 | top 5% |
+|---|---|---|---|---|---|
+| mean | −0.79pp | −0.2 to −0.8pp | +0.60pp | +0.23pp | **−0.46pp** |
+
+The spread is the **bottom** falling, not the top rising, and this system is long-only, so
+that half is unreachable. The slice a long-only rule would buy earns nothing.
+
+**The gate check agrees** (`research/v3_gate_check.py`, the same T1/T2 functions the PEAD
+re-check used). Buying the top 5% of the text score and holding 60 sessions, over 1,166
+development trades: −0.051pp per trade date-clustered (p=0.92), −0.051pp quarter-clustered
+(p=0.95), calendar-time alpha **−1.82%/yr (p=0.58)**, beta 1.13. It does not clear the
+gate on development data, so **the S&P 400/600 exam is not worth spending on this rule**.
+
+Base rate worth remembering: the average release underperforms SPY by −0.32pp over 60
+sessions in this sample, because equal-weighted stocks lagged the cap-weighted index.
+Decile 9 beats that base rate by about +0.9pp — real relative information, but banking it
+needs shorting the rest, which this project does not do.
+
+**What stands:** a reader that explains the announcement move materially better than the
+numbers alone, a live pipeline, and a shadow account collecting out-of-time evidence on a
+rule whose development edge is flat. **What does not:** any long-only trade from it.
