@@ -1,0 +1,287 @@
+# Project state — 2026-09-21
+
+A handoff for a fresh session. `CLAUDE.md` holds the standing rules and `ROADMAP.md` the
+phase-by-phase history; this file is the current picture, the evidence behind it, and the
+one direction worth exploring next (long-short, at the end).
+
+---
+
+## 1. What this is
+
+A paper-trading system that buys S&P 500 stocks after unusually large earnings surprises
+and holds them for 60 sessions. One code path serves both the backtest and the live run
+(`trader/`). A second, newer piece reads the companies' earnings press releases with three
+language models and scores them (`trader/text/`), but it does not trade real decisions.
+
+**The honest one-liner:** the plumbing is finished and reliable; the evidence that any of
+it beats simply holding SPY is not there yet.
+
+---
+
+## 2. What is running right now
+
+| | Live account (`data/trader.db`) | Shadow account (`data/shadow.db`) |
+|---|---|---|
+| Opened | 2026-09-15 with $1,000 | 2026-09-21 with $1,000 |
+| Holds | 1.3136 SPY (idle cash), equity $1,006.74 at the 09-17 close | all cash |
+| Closed trades | 0 | 0 |
+| Signal | top 5% price-scaled EPS surprise | text score (top 5% of the model's training predictions) |
+| Purpose | out-of-time test of the earnings signal | out-of-time test of the text signal |
+
+**The daily run** (`python -m trader.run_daily`) is registered in Task Scheduler for
+weekdays at 14:30 New York time. It refreshes prices and earnings, settles fills, decides
+and submits market-on-close orders, reads any earnings releases filed that day, scores
+them, advances the shadow account, and writes `reports/YYYY-MM-DD.md`.
+
+**Scheduler caveat, learned the hard way:** the task was silently dead for three days
+because Windows' defaults refuse to start it on battery and kill it when the power source
+changes. It now runs on battery, retries three times, and logs each start and exit code to
+`data/run_daily.log`. It still cannot wake a sleeping laptop — `StartWhenAvailable` catches
+up when the machine wakes. The first full run with everything wired is the evening of
+2026-09-21.
+
+---
+
+## 3. Evidence ledger
+
+What has been tested, what it showed, and whether that data is now spent.
+
+| Test | Result | Data |
+|---|---|---|
+| VIX regime × earnings beat (Phase 1) | rejected, a precisely estimated zero | — |
+| PEAD top-decile, repaired universe | FAIL: +0.767pp, p=0.063 | S&P 500 |
+| PEAD top-5%, out-of-sample, pre-registered | PASS: +2.730pp, p=0.0009, date-clustered | S&P 400/600 prices — **spent** |
+| **The same, re-checked properly (Phase 2e)** | **does not survive**: quarter-clustered p=0.021, calendar-time alpha +2.94%/yr p=0.37, beta 1.36 | same |
+| v2 sentiment (word lists on 8-K text) | **FAIL**: +0.431pp, p=0.384; correlation +0.003 | S&P 500 2020-26 holdout — **spent, never reuse** |
+| v3 reader, explaining the announcement move | **works**: R² 0.0853 vs 0.0716 from the surprise alone, 23,997 releases | S&P 500 development |
+| v3 as a long-only trade | **fails the gate**: top 5% −0.051pp/trade (p=0.95), calendar-time alpha −1.82%/yr (p=0.58) | same |
+| S&P 400/600 release text (the v3 exam) | **never touched** — 27,164 releases downloaded, returns never read | **unspent** |
+
+**The live strategy's own backtest**, 15.3 years: 16.66%/yr against SPY's 13.91%, Sharpe
+0.82 against 0.85, worst drawdown −46% against −34%. After adjusting for its higher market
+exposure (beta 1.16) the edge is +1.06%/yr with p=0.75. It is not distinguishable from
+holding a bit more market risk.
+
+---
+
+## 4. Rules that govern changes
+
+These are the owner's, recorded in `CLAUDE.md`, and they are why the project has thrown
+away three ideas instead of talking itself into them.
+
+1. **The gate is mandatory.** Nothing reaches `config/strategy.json` without passing the
+   event-level gate and the portfolio gate. Since 2026-09-19, anything with overlapping
+   holding periods must also clear **T1** (standard errors clustered by calendar quarter)
+   and **T2** (calendar-time alpha against the matched benchmark, Newey-West), both
+   implemented in `research/inference_check.py`. Date clustering alone overstated every
+   earlier result.
+2. **Pre-register before looking.** Write the rule and the verdict condition into a
+   committed file first. `research/prereg_*.md` are the precedents.
+3. **One-shot data stays one-shot.** The S&P 500 2020-26 sentiment holdout is spent. The
+   S&P 400/600 exam set is not, and nothing that touches its returns may run before a
+   pre-registration is committed. Layer 0 (pure text bookkeeping) is allowed on it.
+4. **The project is free** — no paid APIs, data or models unless the owner says otherwise.
+5. **Scores are written once.** `text_scores` rows are never revised; each carries the
+   model that produced it. A score is evidence about what was knowable that afternoon.
+
+---
+
+## 5. The text signal (v3), in one page
+
+**Pipeline**, `trader/text/`, same code in research and live:
+
+1. `fetch.py` — find the company's 8-K with Item 2.02 within two days of the announcement;
+   refuse to score anything whose acceptance time is later than the decision.
+2. `parse.py` — the EX-99 exhibit's HTML into paragraphs and table rows. Handles every
+   generator from 2010 to 2026 and repairs Windows-1252 quotes and dashes.
+3. `novelty.py` — every sentence and row against the company's own previous four releases:
+   *boilerplate* (identical), *template* (same words, new numbers), *edited*, *new*. In a
+   mature release, 44% of sentences are verbatim repeats and 15% only change numbers.
+4. `readers.py` — the first 20 new or edited sentences, read by three free models. The cap
+   is measured, not guessed: reading is flat from the first 10 sentences upward, because
+   the news sits at the top of a release.
+5. `features.py` / `model.py` — 14 features into a ridge fitted on 23,997 releases
+   (`config/text_model.{json,npz}`, written by `research/v3_fit.py`).
+
+**What it predicts:** the announcement reaction — the stock's move against SPY from the
+last close before the release to the first close the system could trade — from the text
+**and** the earnings surprise, so text is only rewarded for what the numbers do not say.
+
+**Reader comparison** (out-of-fold R² on the reaction, 23,997 releases):
+
+| | R² |
+|---|---|
+| Earnings surprise alone | 0.0716 |
+| + word lists | 0.0748 |
+| + FinBERT | 0.0798 |
+| + DistilRoBERTa-finance | 0.0813 |
+| + **MiniLM** (384-number "what is this about" fingerprint) | **0.0819** |
+| + everything | **0.0853** |
+
+Two things worth carrying forward. **MiniLM went from worst to best** between 8,000 and
+24,000 releases — its map needs data. And the **model-disagreement feature faded**: +0.0011
+at 8,000 releases, +0.0001 at 24,000. That is what a noise finding does when tested on more
+data.
+
+**Speeds on this machine** (Snapdragon X Plus, 8 cores, native ARM64 Python): MiniLM ~85
+sentences/s, DistilRoBERTa ~33/s, FinBERT ~18/s. Running the three side by side is *slower*
+than one after another. 8-bit quantisation is slower still and disagrees with the full
+model.
+
+---
+
+## 6. Long-short — the direction worth exploring
+
+### Why it came up
+
+The text score's top-minus-bottom fifth is **+1.12pp over 60 sessions (p<0.005)** on the
+full development set. That looks tradable until you see where it comes from:
+
+| Text-score decile | 60-session return vs SPY |
+|---|---|
+| 1 (worst-read) | −0.79pp |
+| 2 | −0.62pp |
+| 3 | −0.75pp |
+| 4 | −0.70pp |
+| 5 | −0.23pp |
+| 6 | −0.53pp |
+| 7 | −0.21pp |
+| 8 | −0.20pp |
+| **9** | **+0.60pp** |
+| 10 (best-read) | +0.23pp |
+| *all releases* | *−0.32pp* |
+| **top 5% — what a long-only rule buys** | **−0.46pp** |
+
+**The spread is the bottom falling, not the top rising.** A long-only system cannot reach
+it. That is the whole reason long-short is on the table.
+
+Note the base rate: the average release underperforms SPY by −0.32pp over 60 sessions,
+because equal-weighted stocks lagged the cap-weighted index across 2011-2026. Every
+long-only number above fights that drag; a dollar-neutral book cancels it, which is the
+second reason long-short is the natural shape for this signal.
+
+### What it would have earned
+
+`research/v3_longshort_probe.py`, development data, dollar-neutral, equal-weighted, each
+event held 60 sessions from the next close, 10bps a side plus 1%/yr borrow on the shorts:
+
+| | |
+|---|---|
+| Decile 10 minus decile 1, per trade | +1.02pp (p=0.066, quarter-clustered) |
+| **Decile 9 minus decile 1** | **+1.39pp (p=0.007)** |
+| Portfolio return | **+1.51%/yr**, volatility 4.2%, **Sharpe 0.36** |
+| Significance | t = 1.40, **p = 0.16 — not significant** |
+| Alpha vs SPY | +1.53%/yr (p=0.14), **beta −0.00** |
+| Book size | ~36 long and ~36 short positions at a time |
+| Years positive | 10 of 16 (worst 2020 −8%, best 2024 +9%) |
+
+### How to read that honestly
+
+- **It is the best shape the signal has taken**, and the only one where the money is
+  reachable. Market-neutral by construction: beta −0.00.
+- **It is still not significant**, on development data that has been looked at many times.
+  p=0.16 after a dozen prior tests is weak.
+- **The decile pattern is not monotone.** Decile 9 beats decile 10 (+0.60 vs +0.23), and
+  decile 9 minus 1 is the strongest pair. A signal whose second-best bucket beats its best
+  is a warning: either the extreme tail is different in kind, or this is noise.
+- **Low volatility flatters the Sharpe.** 4.2% volatility on a 1.5% return is a thin edge,
+  and costs were charged at 10bps a side plus 1%/yr borrow; both could be worse in practice.
+
+### What would have to happen before it could trade
+
+1. **A pre-registered test on the S&P 400/600 exam set** — the only unspent data. Write the
+   rule (which deciles, holding period, costs, borrow) and the verdict condition first, and
+   require **T1 and T2**, as the gate demands. The exam set's releases are already
+   downloaded; it would need layer 0, labels and reader scoring — roughly 5-7 hours of
+   compute on this machine — and none of that touches its returns until the
+   pre-registration is committed.
+2. **Shorting in the engine.** `trader/engine.py`, `portfolio.py` and `exits.py` are
+   long-only throughout: sizing, the volatility trailing stop and the benchmark-cash rule
+   all assume long positions. This is real work, not a flag.
+3. **A broker that can short.** Alpaca paper supports it; the simulated ledger does not
+   model borrow, locate, or margin at all.
+
+### The constraint that matters most
+
+**The intended real stake is about $100, and you cannot short with $100.** A US margin
+account needs $2,000 minimum under Reg T before any short position is possible, and borrow
+plus margin interest eat a 1.5%/yr edge at small size. So long-short is a research
+direction and a paper-trading question for now, not a path to real money at this size. That
+is worth deciding deliberately rather than discovering after building shorting into the
+engine.
+
+### If you want the cheapest next step
+
+Score the exam set's 27,164 releases and pre-register the decile-9-or-10 minus decile-1
+test. That answers "is this real?" for about 6 hours of background compute and no money,
+and it either kills the idea or makes the engine work worth doing.
+
+---
+
+## 7. Where everything lives
+
+| Path | What |
+|---|---|
+| `trader/` | the trading system; `run_daily.py` is the entry point |
+| `trader/text/` | the production text pipeline (fetch, parse, novelty, readers, features, model, pipeline, store) |
+| `trader/shadow.py` | the shadow account |
+| `research/` | every experiment, each with its result in its header or a design doc |
+| `research/design_sentiment_v3.md` | the v3 design, every decision and every measured result |
+| `research/prereg_*.md` | pre-registrations, committed before their tests ran |
+| `config/` | `strategy.json` (live parameters + evidence), `text_model.{json,npz}`, `tripwire_band.csv` |
+| `data_archive/` | committed: the scored sample, reader features, reports, the v1 news articles |
+| `reports/` | daily reports (gitignored) |
+
+**Databases** (all gitignored, in `data/`):
+
+| File | Size | Contents | Reproducible? |
+|---|---|---|---|
+| `research.db` | 244 MB | prices, VIX, earnings, 41,569 scored news articles | prices/earnings yes; **the news articles no** (archived) |
+| `edgar.db` | 692 MB | 26,357 S&P 500 releases, raw HTML with structure | yes, hours |
+| `edgar_midsmall.db` | 363 MB | **the exam set**: 27,164 S&P 400/600 releases, text only | yes |
+| `v3.db` | 920 MB | layer 0 output, reaction labels, reader outputs, features | yes, ~9 h of compute |
+| `trader.db` | 3 MB | the live account, and `text_scores` | **no — this is the live record** |
+| `shadow.db` | 3 MB | the shadow account | **no** |
+
+---
+
+## 8. Environment notes that cost time to learn
+
+- **The laptop sleeps.** A 20-hour stretch of "slow" scoring turned out to be 19.8 hours of
+  standby. Long jobs need AC power, an open lid, and ideally sleep disabled while they run.
+- **On battery, Windows throttles the CPU** and kills scheduled tasks on power-source
+  change unless the task says otherwise (it now does).
+- **All long jobs are resumable.** Re-running the same command picks up where it stopped.
+- **SQLite is in WAL mode** where readers and writers overlap. `filings` has no index on
+  `cik`; filtering it per company re-reads the whole blob-heavy table, which once turned a
+  10-minute job into hours.
+- **Everything is local and free.** The SEC contact is read from `git config user.email` at
+  run time and never written into the repo.
+
+---
+
+## 9. Open questions
+
+1. **Keep the shadow account running?** Its rule (top 5% of the text score, long-only) has
+   no development edge. Live evidence is cheap, but it is evidence about a rule we expect
+   to be flat.
+2. **Long-short**, as above: test on the exam set first, decide about engine work after,
+   and settle whether a strategy that needs $2,000+ fits a project aiming at $100.
+3. **Real money** on the earnings strategy is not supported by the current evidence, and
+   the strategy does not pass the upgraded gate. The paper account is the only clean test
+   left running.
+4. **The 8-K text file `edgar.db` keeps growing** as the daily run caches new releases,
+   which is deliberate: today's filing is next quarter's history.
+
+---
+
+## 10. Verifying any of this
+
+```
+.venv\Scripts\python.exe -m unittest discover -s tests -t .     # 75 tests
+.venv\Scripts\python.exe -m trader.run_daily --dry-run          # full pipeline, saves nothing
+.venv\Scripts\python.exe research\inference_check.py            # the PEAD re-check (T0/T1/T2/T3)
+.venv\Scripts\python.exe research\v3_readers_eval.py            # reader comparison
+.venv\Scripts\python.exe research\v3_gate_check.py              # text signal vs the gate
+.venv\Scripts\python.exe research\v3_longshort_probe.py         # the long-short numbers above
+```

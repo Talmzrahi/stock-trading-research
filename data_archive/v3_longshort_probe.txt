@@ -1,0 +1,30 @@
+23,541 development releases, 2011-04-07 → 2026-06-18
+
+── 60-session excess return vs SPY, by text-score decile ──
+   decile  1: n=2,355   -0.79pp
+   decile  2: n=2,354   -0.62pp
+   decile  3: n=2,354   -0.75pp
+   decile  4: n=2,354   -0.70pp
+   decile  5: n=2,354   -0.23pp
+   decile  6: n=2,354   -0.53pp
+   decile  7: n=2,354   -0.21pp
+   decile  8: n=2,354   -0.20pp
+   decile  9: n=2,354   +0.60pp
+   decile 10: n=2,354   +0.23pp
+   all releases: -0.32pp  (equal-weighted stocks lagged the cap-weighted index over this period)
+
+── Per trade, long top decile vs short bottom decile ──
+   decile 10 minus decile 1: +1.02pp per trade (p=0.066, quarter-clustered, n=4,709)
+   decile 9 minus decile 1: +1.39pp per trade (p=0.007, quarter-clustered, n=4,709)
+   decile 10 minus decile 2: +0.85pp per trade (p=0.089, quarter-clustered, n=4,708)
+
+── As a portfolio: dollar-neutral, held 60 sessions, net of costs ──
+   185 months live · average 36 long / 36 short positions
+   return +1.51%/yr · volatility 4.2% · Sharpe 0.36 · t=1.40 (p=0.162)
+   alpha vs SPY +1.53%/yr (p=0.136), beta -0.00
+
+── By year (is it steady or one good spell?) ──
+   2011:+4%  2012:-1%  2013:+0%  2014:+5%  2015:+7%  2016:-4%  2017:+4%  2018:+1%  2019:-2%  2020:-8%  2021:+2%  2022:-0%  2023:-5%  2024:+9%  2025:+3%  2026:+8%
+   positive years: 10 of 16
+
+Development data, many looks, no shorting in this system today. Treat as a reason to test, not a result.
