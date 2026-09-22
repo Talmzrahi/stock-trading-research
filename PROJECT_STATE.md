@@ -56,6 +56,7 @@ What has been tested, what it showed, and whether that data is now spent.
 | v3 reader, explaining the announcement move | **works**: R² 0.0853 vs 0.0716 from the surprise alone, 23,997 releases | S&P 500 development |
 | v3 as a long-only trade | **fails the gate**: top 5% −0.051pp/trade (p=0.95), calendar-time alpha −1.82%/yr (p=0.58) | same |
 | **PEAD gate on the pooled S&P 1500** | T1 +2.45pp (p=0.014); **T2 alpha +0.29%/yr, 95% CI [−5.5, +6.0]**, beta 1.39 | S&P 500 + 400/600 prices — both already examined |
+| **Long-short grid, 27 configs** | best is PEAD 10% / 20-session: **+3.57%/yr, Sharpe 0.36, p=0.207**; −2.60%/yr in 2014-19, +8.83%/yr in 2020-26; +0.67%/yr at 20bps a side | S&P 500 development, fitted search |
 | **Survivorship in 2008-2010** | that window alone: **T2 alpha +24.49%/yr, CI [+1.6, +47.4]** off 184 trades — excluded from the analysis window | S&P 500, 54% price coverage |
 | v3 score ranking the PEAD picks (reaction-trained) | **fails, backwards**: worst-read fifth +3.58pp, best-read +0.04pp | S&P 500 development |
 | The same score refitted on 60-session drift | **unresolved**: T1 +3.37pp p=0.062, T2 +6.05%/yr p=0.276, once nothing sees the future | same |
@@ -172,12 +173,18 @@ event held 60 sessions from the next close, 10bps a side plus 1%/yr borrow on th
 | | |
 |---|---|
 | Decile 10 minus decile 1, per trade | +1.02pp (p=0.066, quarter-clustered) |
-| **Decile 9 minus decile 1** | **+1.39pp (p=0.007)** |
-| Portfolio return | **+1.51%/yr**, volatility 4.2%, **Sharpe 0.36** |
-| Significance | t = 1.40, **p = 0.16 — not significant** |
-| Alpha vs SPY | +1.53%/yr (p=0.14), **beta −0.00** |
+| **Decile 9 minus decile 1** | **+1.38pp (p=0.007)** |
+| Portfolio return | **+0.58%/yr**, volatility 4.2%, **Sharpe 0.14** |
+| Significance | t = 0.53, **p = 0.59 — not significant** |
+| Alpha vs SPY | +0.62%/yr (p=0.55), **beta −0.00** |
 | Book size | ~36 long and ~36 short positions at a time |
-| Years positive | 10 of 16 (worst 2020 −8%, best 2024 +9%) |
+| Years positive | 9 of 16 (worst 2020 −8%, best 2024 +7%) |
+
+**Corrected 2026-09-22.** The portfolio rows previously read +1.51%/yr, Sharpe 0.36,
+p=0.16. `book()` applied the long/short sign *after* subtracting costs, which turns every
+short-side cost into a gain — worth about +0.9pp/yr at a 60-session hold and more at
+shorter ones. The per-trade decile spreads were never affected. Fixed in
+`research/v3_longshort_probe.py`.
 
 ### How to read that honestly
 
@@ -350,4 +357,5 @@ without this paragraph. `research/sp1500_gate.py` carries the guard and the hone
 .venv\Scripts\python.exe research\v3_longshort_probe.py         # the long-short numbers above
 .venv\Scripts\python.exe research\v3_drift_rule.py              # ranking the picks + the hindsight ladder
 .venv\Scripts\python.exe research\sp1500_gate.py              # the PEAD gate on the pooled S&P 1500
+.venv\Scripts\python.exe research\longshort_sim.py            # the shorting grid: signal x cutoff x horizon
 ```

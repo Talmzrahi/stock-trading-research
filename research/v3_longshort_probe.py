@@ -55,13 +55,16 @@ def book(picks, side, returns, col, n_days):
         if c is None:
             continue
         window = slice(e + 1, e + HOLD + 1)
-        total[window] += returns[window, c]
+        # `side` multiplies the RETURN. Applying it after the cost subtraction
+        # turns every short-side cost into a gain — the original bug here, worth
+        # about +0.9pp/yr at a 60-session hold and far more at shorter ones.
+        total[window] += side * returns[window, c]
         count[window] += 1
         total[e + 1] -= COST                       # entry
         total[min(e + HOLD, n_days - 1)] -= COST   # exit
     open_ = count > 0
     daily = np.zeros(n_days)
-    daily[open_] = side * total[open_] / count[open_]
+    daily[open_] = total[open_] / count[open_]
     return daily, count
 
 
