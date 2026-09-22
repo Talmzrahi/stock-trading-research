@@ -37,7 +37,27 @@ TITLE   = "List_of_S&P_500_companies"
 START, END = 2007, 2027
 
 SESSION = requests.Session()
-SESSION.headers.update({"User-Agent": "Mozilla/5.0 (sp500 research script)"})
+# Wikipedia's User-Agent policy asks tools to identify themselves and give a
+# means of contact; a generic browser string is what gets throttled first.
+SESSION.headers.update({"User-Agent": "PEAD-research/1.0 "
+                                      "(https://github.com/Talmzrahi/PEAD-stock-trader-)"})
+PAUSE   = 3.0          # between quarters; two requests each
+RETRIES = 4
+
+
+def get(url, **params):
+    """Wikipedia throttles bursts, and a throttled reply is an HTML error page
+    where JSON or a table is expected. Retrying with backoff is the difference
+    between a filled quarter and a silent hole — 2012-2014 went missing that way."""
+    for attempt in range(RETRIES):
+        try:
+            r = SESSION.get(url, params=params, timeout=30)
+            if r.status_code == 200 and r.text.lstrip()[:1] in "{<":
+                return r
+        except requests.RequestException:
+            pass
+        time.sleep(2.0 * 2 ** attempt)
+    return None
 
 
 def init_db(conn):
@@ -53,18 +73,22 @@ def init_db(conn):
 
 
 def revision_at(iso_ts):
-    r = SESSION.get(API, params={
-        "action": "query", "prop": "revisions", "titles": TITLE,
-        "rvlimit": 1, "rvdir": "older", "rvstart": iso_ts,
-        "rvprop": "ids|timestamp", "format": "json"}, timeout=30).json()
+    resp = get(API, action="query", prop="revisions", titles=TITLE,
+               rvlimit=1, rvdir="older", rvstart=iso_ts,
+               rvprop="ids|timestamp", format="json")
+    if resp is None:
+        return None, None
+    r = resp.json()
     page = next(iter(r["query"]["pages"].values()))
     revs = page.get("revisions")
     return (revs[0]["revid"], revs[0]["timestamp"]) if revs else (None, None)
 
 
 def symbols_in_revision(revid):
-    html = SESSION.get("https://en.wikipedia.org/w/index.php",
-                       params={"oldid": revid}, timeout=30).text
+    resp = get("https://en.wikipedia.org/w/index.php", oldid=revid)
+    if resp is None:
+        return []
+    html = resp.text
     best = None
     for t in pd.read_html(StringIO(html)):
         cols = {str(c).strip().lower(): c for c in t.columns}
@@ -79,7 +103,10 @@ def symbols_in_revision(revid):
     syms = (t[key].astype(str).str.strip().str.upper()
             .str.replace(".", "-", regex=False)
             .str.replace(r"\[.*\]", "", regex=True))
-    return sorted({s for s in syms if s and 1 <= len(s) <= 6 and s.replace("-", "").isalpha()})
+    # A trailing footnote row parses as NaN, and under pandas' str dtype NaN
+    # survives .astype(str) as a float — which is what silently cost 2007-2010.
+    return sorted({s for s in syms if isinstance(s, str) and s
+                   and 1 <= len(s) <= 6 and s.replace("-", "").isalpha()})
 
 
 def main():
@@ -110,11 +137,17 @@ def main():
             print(f"  {as_of}: {len(syms)} symbols (rev {revid} @ {ts[:10]})")
         except Exception as e:
             print(f"  {as_of}: {type(e).__name__} {str(e)[:80]}")
-        time.sleep(2.0)
+        time.sleep(PAUSE)
 
     n_snap = conn.execute("SELECT COUNT(DISTINCT as_of) FROM universe_history").fetchone()[0]
     n_sym = conn.execute("SELECT COUNT(DISTINCT symbol) FROM universe_history").fetchone()[0]
     print(f"\n{n_snap} snapshots, {n_sym} distinct symbols ever seen")
+
+    # A missing quarter is not harmless: point_in_time falls back to the last
+    # snapshot before it, so a hole means events matched against a stale index.
+    have = {r[0] for r in conn.execute("SELECT DISTINCT as_of FROM universe_history")}
+    gaps = [q[:10] for q in quarters if q[:10] not in have]
+    print(f"still missing: {len(gaps)} quarters" + (f" — {gaps}" if gaps else ""))
 
     cur = {r[0] for r in conn.execute(
         "SELECT DISTINCT symbol FROM universe_history WHERE as_of=(SELECT MAX(as_of) FROM universe_history)")}
