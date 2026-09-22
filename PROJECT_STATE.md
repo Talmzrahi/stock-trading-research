@@ -55,6 +55,7 @@ What has been tested, what it showed, and whether that data is now spent.
 | v2 sentiment (word lists on 8-K text) | **FAIL**: +0.431pp, p=0.384; correlation +0.003 | S&P 500 2020-26 holdout — **spent, never reuse** |
 | v3 reader, explaining the announcement move | **works**: R² 0.0853 vs 0.0716 from the surprise alone, 23,997 releases | S&P 500 development |
 | v3 as a long-only trade | **fails the gate**: top 5% −0.051pp/trade (p=0.95), calendar-time alpha −1.82%/yr (p=0.58) | same |
+| **PEAD gate on the pooled S&P 1500** | T1 +2.461pp **p=0.013**; T2 alpha **+0.56%/yr p=0.849**, beta 1.40 | S&P 500 + 400/600 prices — both already examined |
 | v3 score ranking the PEAD picks (reaction-trained) | **fails, backwards**: worst-read fifth +3.58pp, best-read +0.04pp | S&P 500 development |
 | The same score refitted on 60-session drift | **unresolved**: T1 +3.37pp p=0.062, T2 +6.05%/yr p=0.276, once nothing sees the future | same |
 | S&P 400/600 release text (the v3 exam) | **never touched** — 27,164 releases downloaded, returns never read | **unspent** |
@@ -272,15 +273,24 @@ and it either kills the idea or makes the engine work worth doing.
 3. **Real money** on the earnings strategy is not supported by the current evidence, and
    the strategy does not pass the upgraded gate. The paper account is the only clean test
    left running.
-4. **Expand the universe beyond the S&P 500?** Every result in this project has failed
-   from lack of power rather than from being clearly wrong: T2's standard error is ~5.5%/yr
-   against effects of ~6%/yr. Roughly 10x the names would cut that to ~1.7%/yr and make the
-   tests decisive. The free route is SEC XBRL company facts for reported EPS on every filer,
-   with seasonal-random-walk SUE replacing analyst consensus (not free below large caps).
-   Traps: delisted companies (the survivorship bias Phase 2b repaired) and small-cap spreads
-   against a 10bps large-cap cost assumption. Days of work, and it rescues no existing rule —
-   it makes future tests conclusive. `data/oos_midsmall.db` already holds 87,160 S&P 400/600
-   earnings events (development-grade since Phase 2c) if a cheaper 1.7x rehearsal is wanted.
+4. **Expanding the universe does not buy the power we need — measured, 2026-09-22.**
+   `research/sp1500_gate.py` pooled the S&P 500 and S&P 400/600 PEAD samples: 2,758 events
+   against 1,278, i.e. 2.7x. The gate's answer got *clearer*, not better: T1 +2.461pp
+   (p=0.013) but **T2 alpha +0.56%/yr, p=0.849, beta 1.40**. After market exposure there is
+   nothing there, and the pooled estimate is now tight enough to say so.
+
+   The structural lesson matters more than the number. **Pooling added 2.7x the events and
+   zero quarters** (65 → 65) and one month (196 → 197), because both halves span the same
+   calendar. T1 clusters by quarter and T2 regresses monthly returns, so both are limited by
+   *calendar span*, not by how many stocks are in it. The T2 standard error fell only
+   4.19% → 2.93%/yr (1.43x) and the T1 standard error barely moved (1.048 → 0.965pp, 1.09x).
+   More names diversify each month; they do not add independent months, and that saturates.
+
+   So the earlier "~10x the universe would cut T2's SE to ~1.7%/yr" was **wrong**. On the
+   measured scaling it would buy perhaps 2x, with diminishing returns, and the residual is
+   market-wide noise that only more years can reduce. There are only ~16 years of
+   point-in-time membership and they cannot be bought. Build a 5,000-stock pipeline for
+   better *coverage* if that is wanted, but not expecting it to make these tests decisive.
 5. **The 8-K text file `edgar.db` keeps growing** as the daily run caches new releases,
    which is deliberate: today's filing is next quarter's history.
 
@@ -296,4 +306,5 @@ and it either kills the idea or makes the engine work worth doing.
 .venv\Scripts\python.exe research\v3_gate_check.py              # text signal vs the gate
 .venv\Scripts\python.exe research\v3_longshort_probe.py         # the long-short numbers above
 .venv\Scripts\python.exe research\v3_drift_rule.py              # ranking the picks + the hindsight ladder
+.venv\Scripts\python.exe research\sp1500_gate.py              # the PEAD gate on the pooled S&P 1500
 ```

@@ -86,8 +86,8 @@ record. It does not affect the live account and is not in `config/strategy.json`
 development evidence is borderline (continuation +0.95pp top-minus-bottom fifth at 60
 sessions, p=0.07), and it has not passed the gate. `--text off` skips it.
 
-Not built: Alpaca broker, a validated second signal (so fusion is still a pass-through
-for the live account), non-standard signals, numerical stream beyond EPS.
+Not built: a validated second signal (so fusion is still a pass-through for the live
+account), non-standard signals, numerical stream beyond EPS.
 
 ## Commands
 
@@ -121,9 +121,12 @@ archived to `data_archive/*.csv.gz` (committed); restore with
   preemptively.
 - Free data sources only for now (see ROADMAP.md's guiding decisions) — check before
   adding a paid data dependency.
-- Target paper-trading venue: Alpaca's paper trading API — not yet integrated (the
-  simulated broker stands in). An Alpaca broker implements `trader.broker.Broker`; must
-  support dollar-notional fractional orders, since the intended real stake is ~$100.
+- Target paper-trading venue: Alpaca's paper trading API — **built** (`trader/alpaca.py`,
+  tests in `tests/test_alpaca.py`), selected with `--broker alpaca` or `TRADER_BROKER`.
+  It implements `trader.broker.Broker`, sends market day orders shortly before the close
+  (Alpaca allows fractional/notional only with `time_in_force=day`), and refuses a
+  non-paper URL by design. The simulated broker remains the default; switching is the
+  owner's decision and needs ALPACA_API_KEY / ALPACA_SECRET_KEY.
 - Runs on Windows locally (PowerShell). Keep scripts cross-platform-safe where it's
   easy (e.g. explicit UTF-8 stdout so emoji in status output doesn't crash on Windows'
   default console encoding), but don't over-engineer for platforms not in use.
