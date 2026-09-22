@@ -56,6 +56,7 @@ What has been tested, what it showed, and whether that data is now spent.
 | v3 reader, explaining the announcement move | **works**: R² 0.0853 vs 0.0716 from the surprise alone, 23,997 releases | S&P 500 development |
 | v3 as a long-only trade | **fails the gate**: top 5% −0.051pp/trade (p=0.95), calendar-time alpha −1.82%/yr (p=0.58) | same |
 | **PEAD gate on the pooled S&P 1500** | T1 +2.45pp (p=0.014); **T2 alpha +0.29%/yr, 95% CI [−5.5, +6.0]**, beta 1.39 | S&P 500 + 400/600 prices — both already examined |
+| **Volatility targeting, SPY (pre-registered)** | **FAIL** on the 1993-2001 holdout: Sharpe +0.06 (needed +0.10), plateau 7/12 (needed 8), +0.04 at 10bps. Drawdown criterion passed (−35.6% → −26.9%). Premise held (vol autocorrelation 0.604) | SPY 1993-2001 — **spent, never reuse** |
 | **Long-short grid, 27 configs** | best is PEAD 10% / 20-session: **+3.57%/yr, Sharpe 0.36, p=0.207**; −2.60%/yr in 2014-19, +8.83%/yr in 2020-26; +0.67%/yr at 20bps a side | S&P 500 development, fitted search |
 | **Survivorship in 2008-2010** | that window alone: **T2 alpha +24.49%/yr, CI [+1.6, +47.4]** off 184 trades — excluded from the analysis window | S&P 500, 54% price coverage |
 | v3 score ranking the PEAD picks (reaction-trained) | **fails, backwards**: worst-read fifth +3.58pp, best-read +0.04pp | S&P 500 development |
@@ -358,4 +359,5 @@ without this paragraph. `research/sp1500_gate.py` carries the guard and the hone
 .venv\Scripts\python.exe research\v3_drift_rule.py              # ranking the picks + the hindsight ladder
 .venv\Scripts\python.exe research\sp1500_gate.py              # the PEAD gate on the pooled S&P 1500
 .venv\Scripts\python.exe research\longshort_sim.py            # the shorting grid: signal x cutoff x horizon
+.venv\Scripts\python.exe research\voltarget_test.py           # the pre-registered vol-targeting test (FAIL)
 ```
