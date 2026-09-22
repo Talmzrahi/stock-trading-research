@@ -17,7 +17,14 @@
 #  CRSP. Results on the losing tail stay contaminated; say so rather than
 #  implying the universe is clean.
 #
+#  ALWAYS run research/universe_ids.py afterwards. point_in_time matches by
+#  FIRM (CIK), not ticker, so a snapshot here without a matching universe_ids
+#  row falls back to "SYM:<ticker>" and matches almost nothing. Adding the
+#  missing 2012-2014 quarters without it cut recognised 2012 events from
+#  ~1,360 to 16 — a repair that looked like a finding until it was traced.
+#
 #    python research/universe.py
+#    python research/universe_ids.py      # not optional
 # ═══════════════════════════════════════════════════════════════════════
 
 import sqlite3

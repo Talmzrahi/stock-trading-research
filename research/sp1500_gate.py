@@ -10,6 +10,16 @@
 #  pre-registered cutoff test on the mid/small half, Phase 2e re-checked
 #  it). This sharpens the ESTIMATE; it does not create fresh evidence.
 #
+#  ANALYSIS WINDOW. Events start 2010-05, not 2008-01, although repaired
+#  membership now reaches back to 2007-04. Measured reason, not taste:
+#  the 2008-01 → 2010-04 window alone shows a calendar-time alpha of
+#  +24.49%/yr (95% CI [+1.59, +47.39]) off 184 trades, and including it
+#  moves the full-sample alpha from -0.95%/yr to +2.94%/yr. Only 54% of
+#  2007-era index members have prices in research.db and the missing half
+#  is disproportionately the firms that failed -- 48 left the index in
+#  2008 alone. That window measures survivorship, not drift. Do not
+#  "helpfully" extend it back; the better-looking answer is the wrong one.
+#
 #  One-shot data: untouched. This reads oos_midsmall.db (prices and
 #  earnings, development-grade since Phase 2c). It never opens
 #  data/edgar_midsmall.db, which is the one-shot text exam.
@@ -39,7 +49,8 @@ sys.path.insert(0, str(ROOT / "research"))
 from inference_check import (HOLD, MIN_DAYS, NW_LAGS, daily_returns,  # noqa: E402
                              market_alpha, midsmall_sample, sp500_sample)
 
-FORBIDDEN = ROOT / "data" / "edgar_midsmall.db"       # the one-shot exam
+FORBIDDEN      = ROOT / "data" / "edgar_midsmall.db"   # the one-shot exam
+ANALYSIS_START = pd.Timestamp("2010-05-01")           # see the header
 
 
 def net_events(top, col, cost):
@@ -92,8 +103,10 @@ def report(label, ev, legs):
     a_se = abs(a) / t2 if t2 > 0 else float("nan")
     print(f"\n── {label} ──")
     print(f"   {len(ev):,} events, {dates:,} entry dates, {quarters} quarters, {months} months")
-    print(f"   T1  {m*100:+.3f}pp  SE {se*100:.3f}pp  p={p:.4f}")
-    print(f"   T2  alpha {a*100:+.2f}%/yr  SE {a_se*100:.2f}%/yr  p={p2:.4f}  beta {beta:.2f}")
+    print(f"   T1  {m*100:+.2f}pp   95% CI [{(m-1.96*se)*100:+.2f}, {(m+1.96*se)*100:+.2f}]"
+          f"   p={p:.4f}")
+    print(f"   T2  alpha {a*100:+.2f}%/yr   95% CI [{(a-1.96*a_se)*100:+.2f}, "
+          f"{(a+1.96*a_se)*100:+.2f}]   p={p2:.4f}   beta {beta:.2f}")
     print(f"   →  {'CLEARS' if (m > 0 and p < 0.05 and a > 0 and p2 < 0.05) else 'does NOT clear'}"
           f" both gate tests")
     return se, a_se
@@ -106,6 +119,8 @@ def main():
     big_top, big_col, big_cost, big_closes = sp500_sample()
     mid_top, mid_col, mid_cost, mid_closes = midsmall_sample()
 
+    big_top = big_top[pd.to_datetime(big_top.entry_date) >= ANALYSIS_START]
+    mid_top = mid_top[pd.to_datetime(mid_top.entry_date) >= ANALYSIS_START]
     big_ev, mid_ev = net_events(big_top, big_col, big_cost), net_events(mid_top, mid_col, mid_cost)
     big_legs, mid_legs = daily_legs(big_top, big_closes, big_cost), daily_legs(mid_top, mid_closes, mid_cost)
 
@@ -128,6 +143,11 @@ def main():
           f"({a_b/a_p:.2f}x tighter)")
     print("\n   Both halves were already examined, so this is a sharper estimate,")
     print("   not fresh evidence. The one-shot text exam remains unspent.")
+    print(f"\n   Read the intervals, not the verdict. T2 resolves to about "
+          f"±{a_p * 1.96 * 100:.0f}%/yr, so it can rule out a spectacular strategy and a")
+    print("   disastrous one, and nothing in between — which is every edge worth")
+    print("   trading at this size. That is the case for the paper accounts, not a")
+    print("   reason to loosen the gate: the lenient version overstated every result.")
 
 
 if __name__ == "__main__":

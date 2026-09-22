@@ -30,6 +30,22 @@ p=0.37 (β 1.36). The live strategy's alpha vs SPY is +1.06%/yr, p=0.75. Treat t
 signal as unproven; the paper account is its out-of-time test. It does not pass the
 upgraded gate below, so it stays in paper trading only: real money would need it to pass.
 
+**The S&P 500 figures above predate the universe repair of 2026-09-22** (PROJECT_STATE
+§8b), which filled 2012-2014 — never collected, so those events had been matched against
+a three-year-stale index — and extended membership back to 2007-04. The mid/small figures
+are unaffected; they come from their own database. Two things follow. **Analysis starts
+2010-05**, because the newly reachable 2008-2010 window is only 54% covered by prices and
+shows a calendar-time alpha of +24.49%/yr on 184 trades — survivorship, not drift.
+And **`research/pead_trailing.py` now prints PASS (+1.019pp, p=0.0093)** because it has no
+window guard; that verdict is the contaminated window and should not be quoted.
+`research/sp1500_gate.py` carries the guard: on the clean window the S&P 500 alpha is
+−0.95%/yr, 95% CI [−9.2, +7.3].
+
+Report intervals rather than verdicts where you can. T2 resolves to roughly ±8%/yr here,
+so it separates a spectacular strategy from a disastrous one and nothing in between. That
+is the argument for the paper accounts; it is **not** a reason to loosen the gate, which
+exists because the lenient version overstated every result it was ever applied to.
+
 The simulated account runs on this config. **Real money and the Alpaca switch are the
 owner's decisions**, not automatic (Alpaca needs paper keys in ALPACA_API_KEY /
 ALPACA_SECRET_KEY).

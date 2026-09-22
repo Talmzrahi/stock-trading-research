@@ -55,7 +55,8 @@ What has been tested, what it showed, and whether that data is now spent.
 | v2 sentiment (word lists on 8-K text) | **FAIL**: +0.431pp, p=0.384; correlation +0.003 | S&P 500 2020-26 holdout — **spent, never reuse** |
 | v3 reader, explaining the announcement move | **works**: R² 0.0853 vs 0.0716 from the surprise alone, 23,997 releases | S&P 500 development |
 | v3 as a long-only trade | **fails the gate**: top 5% −0.051pp/trade (p=0.95), calendar-time alpha −1.82%/yr (p=0.58) | same |
-| **PEAD gate on the pooled S&P 1500** | T1 +2.461pp **p=0.013**; T2 alpha **+0.56%/yr p=0.849**, beta 1.40 | S&P 500 + 400/600 prices — both already examined |
+| **PEAD gate on the pooled S&P 1500** | T1 +2.45pp (p=0.014); **T2 alpha +0.29%/yr, 95% CI [−5.5, +6.0]**, beta 1.39 | S&P 500 + 400/600 prices — both already examined |
+| **Survivorship in 2008-2010** | that window alone: **T2 alpha +24.49%/yr, CI [+1.6, +47.4]** off 184 trades — excluded from the analysis window | S&P 500, 54% price coverage |
 | v3 score ranking the PEAD picks (reaction-trained) | **fails, backwards**: worst-read fifth +3.58pp, best-read +0.04pp | S&P 500 development |
 | The same score refitted on 60-session drift | **unresolved**: T1 +3.37pp p=0.062, T2 +6.05%/yr p=0.276, once nothing sees the future | same |
 | S&P 400/600 release text (the v3 exam) | **never touched** — 27,164 releases downloaded, returns never read | **unspent** |
@@ -260,6 +261,48 @@ and it either kills the idea or makes the engine work worth doing.
   10-minute job into hours.
 - **Everything is local and free.** The SEC contact is read from `git config user.email` at
   run time and never written into the repo.
+
+---
+
+## 8b. The universe repair (2026-09-22) and what it cost to get right
+
+`research/universe.py` skipped any quarter that raised, silently. Two faults were hitting
+it: no retry against Wikipedia's throttling (which returns an HTML error page where JSON is
+expected), and a trailing footnote row that parses as NaN and survives `.astype(str)` as a
+float under pandas' `str` dtype. Between them, **2012-01 through 2014-07 were never
+collected** and every pre-2010 revision failed. `point_in_time` falls back to the last
+snapshot before a gap, so events from 2012 to mid-2014 were matched against the 2011-10
+index — up to three years stale.
+
+Both fixed; snapshots 56 → 79, coverage now 2007-04 → 2026-09.
+
+**The trap, recorded because it nearly became a finding.** Filling `universe_history`
+without rerunning `research/universe_ids.py` makes things *worse*, not better:
+`point_in_time` matches by firm CIK, and a snapshot with no `universe_ids` row falls back
+to `"SYM:<ticker>"` and matches almost nothing. Recognised 2012 events went from ~1,360 to
+**16**. The resulting weaker numbers looked like "correct data deflates the signal" and were
+written up as such for one commit. They were a bug. **Run `universe_ids.py` every time.**
+
+**Why the analysis window starts 2010-05 even though data now reaches 2007-04.** Measured,
+not assumed:
+
+| Window | Trades | T1 | T2 alpha | 95% CI |
+|---|---|---|---|---|
+| 2010-05 → 2026 | 1,289 | +1.89pp (p=0.077) | −0.95%/yr | [−9.23, +7.34] |
+| 2008-01 → 2026 | 1,473 | +2.15pp (p=0.027) | +2.94%/yr | [−5.22, +11.10] |
+| **2008-2010 only** | **184** | +3.88pp (p=0.092) | **+24.49%/yr** | **[+1.59, +47.39]** |
+
+Only 54% of 2007-era index members have prices, and the missing half is disproportionately
+the firms that failed — 48 left the index in 2008 alone. Coverage climbs about a point a
+year to 100% today, so the further back you go the more the sample is reconstructed from
+winners. That window measures survivorship, not drift, and including it moves the headline
+from −0.95%/yr to +2.94%/yr.
+
+**Consequence to know about:** `research/pead_trailing.py` has no window guard, so after the
+repair it now prints **PASS, +1.019pp, p=0.0093**, where it recorded FAIL (+0.767pp,
+p=0.063). That flip is the contaminated window (its 2008-2013 era reads +1.999pp, p=0.003).
+Its pre-registered definition was left untouched deliberately — do not read its verdict
+without this paragraph. `research/sp1500_gate.py` carries the guard and the honest numbers.
 
 ---
 
