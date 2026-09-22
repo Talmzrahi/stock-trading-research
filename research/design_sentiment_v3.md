@@ -360,3 +360,104 @@ needs shorting the rest, which this project does not do.
 **What stands:** a reader that explains the announcement move materially better than the
 numbers alone, a live pipeline, and a shadow account collecting out-of-time evidence on a
 rule whose development edge is flat. **What does not:** any long-only trade from it.
+
+## Ranking the trades we already take (2026-09-21/22): closed, power-limited
+
+The question: the live system buys every top-5% surprise equally. Could a score sort
+those picks — buy the good ones, skip or underweight the rest? Script:
+`research/v3_drift_rule.py`. **Development data, many looks. Nothing here is evidence.**
+
+### The reaction-trained score sorts them backwards
+
+Scoring the 1,127 PEAD picks with the production text model (which predicts the
+announcement reaction) and bucketing by that score gives a monotone **decreasing** ladder:
+worst-read fifth +3.58pp over 60 sessions, best-read fifth +0.04pp. Weighting by it
+(+1.92pp) or skipping the worst fifth (+1.84pp) both lose to equal weight (+2.05pp). This
+reproduces the −3.54pp filter result already recorded above, at finer resolution.
+
+Two structural reasons, worth keeping:
+
+- **The text score contains the surprise.** `BASE = ["sue_w", "conviction"]` are model
+  inputs, so the picks are already a high-scoring group — their text scores run median
+  +2.32% against +0.07% for all releases. Selection has taken the well-read ones already.
+- **There is almost no cross-section to weight.** 1,278 entries fall on 779 distinct
+  dates: **1.64 per day, median 1**. Only 35% arrive on a day with 3+ candidates. Within-day
+  conviction weighting measured **+0.000pp (p=0.999)** against equal weight, because most
+  days offer no choice. Loosening the cutoff buys cross-section and dilutes the signal in
+  proportion (top 20%: 3.09/day, +0.507pp); batching monthly gives a median of 7 candidates
+  but enters up to 20 sessions late into a drift that is strongest early.
+
+### Fitting on the drift instead of the reaction
+
+Nobody had fitted layer 3 on the 60-session drift directly — the whole stack targets the
+reaction, which is easier because it is the market's *response* rather than its *error*.
+Refitting the same 15 features on `fwd60` and ranking the picks by the result:
+
+- out-of-fold R² on drift is **negative** (−0.001 to −0.015): the model cannot predict the
+  magnitude. The signal/noise here is 0.098 — mean +1.76pp against sd 17.9pp.
+- but the **ranking** works forwards, and **text contributes independently of the
+  surprise**: text-only +3.66pp top-minus-bottom (p=0.059), surprise-only +3.99pp
+  (p=0.104), together +5.08pp. First evidence in this project that the reader adds
+  something to a trade rather than restating the numbers.
+
+### Three sources of hindsight, each worth about half the effect
+
+This is the part worth remembering. The first version looked like the best result the
+project had produced. It was not:
+
+| What sees the future | Best T1 | Best T2 alpha |
+|---|---|---|
+| in-sample quintiles + cross-fitted model | +4.67pp, p=0.047 | **+9.54%/yr**, p=0.227 |
+| threshold made trailing, model still cross-fitted | +6.18pp, p=0.024 | +1.65%/yr, p=0.834 |
+| **nothing** (expanding-window fit + trailing mean/sd) | +3.37pp, p=0.062 | **+6.05%/yr**, p=0.276 |
+
+1. **In-sample ranking.** `pd.qcut` over the whole sample ranks each pick against releases
+   that had not happened. Removing it turned +8.85%/yr into +1.18%/yr.
+2. **Full-sample threshold statistics.** `mean + k·sd` computed over 2011-2026 means a 2015
+   decision consults 2026. Removing it turned +9.54%/yr into +1.65%/yr (3-year trailing) or
+   **−2.65%/yr** (1-year) — a sign flip.
+3. **`out_of_fold` trains on future folds.** Fine as a research estimate of whether text
+   carries information; not a tradable model. A 2011 event was scored by a fit including
+   2020s data. The expanding-window replacement (`ridge` on years `< Y-1`, so last year's
+   60-session outcomes are settled) costs roughly half the T1 effect.
+
+An attempt to explain the +9.54% mechanically **failed**: the hypothesis was that the
+full-sample threshold implicitly timed the years, but its share-selected correlates
+r=−0.061 (p=0.822) with the year's return. The trailing threshold is the one that
+correlates (r=+0.503, p=0.047). No mechanism established.
+
+### Return-blind bucketing (the owner's method)
+
+Choosing boundaries from the score's own frequency distribution, before consulting
+returns — the same method that set `EDITED = 0.45` — is the one cutoff procedure that can
+be honestly pre-registered. Applied here: the distribution is unimodal (one mode at
++0.85%, 22/22 bins occupied, no natural break; the single candidate trough at +1.35% sits
+in a flat plateau), so it offers no gift boundaries, and sd-band or quantile boundaries
+have to be imposed. With honest timing the resulting ladder is not monotone in T2.
+
+### Can the year's mean and sd be predicted?
+
+Yes, and it does not help. Across 13 expanding-window years, the forecast **sd** is
+strongly autocorrelated (r=+0.75, p=0.00) and the **mean** moderately (r=+0.55, p=0.06).
+But nothing predicts the realised return — last year's mean r=+0.11 (p=0.74), last year's
+sd r=−0.13 (p=0.69), last year's VIX r=+0.30 (p=0.35), pick count r=−0.04 (p=0.90). And
+the model's own average forecast for a year correlates **+0.111 (p=0.718)** with what that
+year actually returned. The time-series version of the idea fails for the same reason as
+the cross-sectional one.
+
+Note the earlier claim that the score's mean "drifts down steadily" was a **cross-fitting
+artifact**. Refitted with an expanding window it shows no clean trend.
+
+### Verdict
+
+The rule does not clear the gate: best honest configuration is T1 +3.37pp (p=0.062) and
+T2 +6.05%/yr (p=0.276) at 25 trades/yr, beta 1.13. It is **unresolved rather than flat** —
+the T2 standard error is about 5.5%/yr — which is the power problem, not a verdict. The
+S&P 400/600 exam is not worth spending on it.
+
+**What would settle it: more names.** At ~10× the universe the T2 standard error falls to
+roughly 1.7%/yr and a +6%/yr alpha becomes decisive. The free route is SEC XBRL company
+facts for reported EPS on every filer, with **seasonal-random-walk SUE** (this quarter
+against the same quarter last year) in place of analyst consensus, which is not free below
+large caps. Two known traps: delisted companies (the survivorship bias Phase 2b repaired)
+and small-cap spreads, since 10bps a side is a large-cap assumption.

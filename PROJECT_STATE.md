@@ -55,6 +55,8 @@ What has been tested, what it showed, and whether that data is now spent.
 | v2 sentiment (word lists on 8-K text) | **FAIL**: +0.431pp, p=0.384; correlation +0.003 | S&P 500 2020-26 holdout — **spent, never reuse** |
 | v3 reader, explaining the announcement move | **works**: R² 0.0853 vs 0.0716 from the surprise alone, 23,997 releases | S&P 500 development |
 | v3 as a long-only trade | **fails the gate**: top 5% −0.051pp/trade (p=0.95), calendar-time alpha −1.82%/yr (p=0.58) | same |
+| v3 score ranking the PEAD picks (reaction-trained) | **fails, backwards**: worst-read fifth +3.58pp, best-read +0.04pp | S&P 500 development |
+| The same score refitted on 60-session drift | **unresolved**: T1 +3.37pp p=0.062, T2 +6.05%/yr p=0.276, once nothing sees the future | same |
 | S&P 400/600 release text (the v3 exam) | **never touched** — 27,164 releases downloaded, returns never read | **unspent** |
 
 **The live strategy's own backtest**, 15.3 years: 16.66%/yr against SPY's 13.91%, Sharpe
@@ -270,7 +272,16 @@ and it either kills the idea or makes the engine work worth doing.
 3. **Real money** on the earnings strategy is not supported by the current evidence, and
    the strategy does not pass the upgraded gate. The paper account is the only clean test
    left running.
-4. **The 8-K text file `edgar.db` keeps growing** as the daily run caches new releases,
+4. **Expand the universe beyond the S&P 500?** Every result in this project has failed
+   from lack of power rather than from being clearly wrong: T2's standard error is ~5.5%/yr
+   against effects of ~6%/yr. Roughly 10x the names would cut that to ~1.7%/yr and make the
+   tests decisive. The free route is SEC XBRL company facts for reported EPS on every filer,
+   with seasonal-random-walk SUE replacing analyst consensus (not free below large caps).
+   Traps: delisted companies (the survivorship bias Phase 2b repaired) and small-cap spreads
+   against a 10bps large-cap cost assumption. Days of work, and it rescues no existing rule —
+   it makes future tests conclusive. `data/oos_midsmall.db` already holds 87,160 S&P 400/600
+   earnings events (development-grade since Phase 2c) if a cheaper 1.7x rehearsal is wanted.
+5. **The 8-K text file `edgar.db` keeps growing** as the daily run caches new releases,
    which is deliberate: today's filing is next quarter's history.
 
 ---
@@ -284,4 +295,5 @@ and it either kills the idea or makes the engine work worth doing.
 .venv\Scripts\python.exe research\v3_readers_eval.py            # reader comparison
 .venv\Scripts\python.exe research\v3_gate_check.py              # text signal vs the gate
 .venv\Scripts\python.exe research\v3_longshort_probe.py         # the long-short numbers above
+.venv\Scripts\python.exe research\v3_drift_rule.py              # ranking the picks + the hindsight ladder
 ```
