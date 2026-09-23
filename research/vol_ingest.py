@@ -75,10 +75,14 @@ def store(conn, symbol, series, kind, note):
     print(f"   {symbol:<7} {rows[0][1]} → {rows[-1][1]}  {len(rows):>6,} days ({span:.1f}y)  {note}")
 
 
-def fetch(symbol, adjust):
+def fetch(symbol, adjust, start=None):
     """adjust=True gives total return (dividends reinvested) for ETFs;
-    an index level must NOT be adjusted."""
-    h = yf.Ticker(symbol).history(start=START, auto_adjust=adjust)
+    an index level must NOT be adjusted.
+
+    `start` overrides START. The long indices need it: the module default
+    of 1990 silently truncated ^GSPC from 98.7 years to 36.7, throwing away
+    the 66 untouched years that were the entire reason for fetching it."""
+    h = yf.Ticker(symbol).history(start=start or START, auto_adjust=adjust)
     return h["Close"] if "Close" in h else pd.Series(dtype=float)
 
 
@@ -109,3 +113,59 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# ── Phase 0b (2026-09-23): fresh samples for further replication ───────
+#
+#  Three groups, chosen for what each can settle that the others cannot:
+#
+#    long_index   ^GSPC from 1927-12-30, 98.7 years. 1927-1993 is 66 years
+#                 this project has never touched, covering the Depression,
+#                 WWII, stagflation and 1987. Calendar span is the binding
+#                 constraint on every test here, and this triples it.
+#    sector_etf   the 9 SPDR sectors from 1998-12-22, total return. Same
+#                 cohort structure as the country test that passed, but a
+#                 different cross-section: do sectors behave like countries?
+#    asset_class  REITs, TIPS, credit, commodities -- to widen the book
+#                 later, not to test the mechanism.
+#
+#  PRICE-ONLY WARNING. The national indices carry no dividends (the DAX is
+#  the exception, it is a total-return index). That biases IN FAVOUR of a
+#  strategy holding less than 100% equity: buy-and-hold forgoes the whole
+#  dividend yield, a book at 70% equity forgoes only 70% of it. Anything
+#  using these must add an assumed yield to the equity leg and report the
+#  sensitivity. Do not compare price-only to total-return series.
+
+LONG_INDEX = {"^GSPC": "S&P 500 (price only, from 1927)",
+              "^N225": "Japan Nikkei (price only)",
+              "^GSPTSE": "Canada TSX (price only)",
+              "^FTSE": "UK FTSE 100 (price only)",
+              "^HSI": "Hong Kong Hang Seng (price only)",
+              "^GDAXI": "Germany DAX (TOTAL RETURN index)",
+              "^FCHI": "France CAC 40 (price only)",
+              "^SSMI": "Swiss SMI (price only)",
+              "^AXJO": "Australia ASX 200 (price only)",
+              "^DJI": "Dow Jones Industrials (price only)"}
+
+SECTOR_ETF = {"XLB": "materials", "XLE": "energy", "XLF": "financials",
+              "XLI": "industrials", "XLK": "technology", "XLP": "staples",
+              "XLU": "utilities", "XLV": "health care", "XLY": "discretionary"}
+
+ASSET_CLASS = {"IYR": "US REITs", "VNQ": "US REITs (Vanguard)", "TIP": "US TIPS",
+               "LQD": "investment-grade credit", "HYG": "high-yield credit",
+               "DBC": "broad commodities"}
+
+
+def ingest_extra():
+    conn = sqlite3.connect(DB, timeout=30)
+    init(conn)
+    for kind, group, adjust in (("long_index", LONG_INDEX, False),
+                                ("sector_etf", SECTOR_ETF, True),
+                                ("asset_class", ASSET_CLASS, True)):
+        print(f"\n{kind} ({'total return' if adjust else 'price levels'}):")
+        for sym, note in group.items():
+            try:
+                store(conn, sym.lstrip("^"), fetch(sym, adjust), kind, note)
+            except Exception as e:
+                print(f"   {sym:<9} {type(e).__name__}: {str(e)[:60]}")
+    conn.close()
