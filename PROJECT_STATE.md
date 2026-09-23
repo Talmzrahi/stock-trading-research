@@ -59,6 +59,10 @@ What has been tested, what it showed, and whether that data is now spent.
 | Correlation-aware weighting (ERC, min-variance) | **REJECTED**: ERC excess Sharpe 0.36 vs inverse-vol 0.62; min-variance 0.49. Shrinking the covariance to its diagonal restores 0.62 — the correlation information is the harm | construction |
 | Trend filter on the diversified book | **REJECTED**: Sharpe 0.72 → 0.54 at 200d, worse at every window, and does not fix 2021-26 | construction |
 | Cost of leverage | futures-style financing (rf+0.3%) vs retail margin (rf+1.5%) buys **+1.7%/yr, +0.09 Sharpe** at target 20% — the largest single improvement found | construction |
+| **Vol targeting, S&P 500 1928-1992 (pre-registered)** | **PASS**: ΔexSharpe +0.19, drawdown −85% → −56% (+34%). Monotone in the dividend assumption | ^GSPC 65 untouched years — **spent** |
+| **Vol targeting, 9 SPDR sectors (pre-registered)** | **FAIL by 0.0022**: median ΔexSharpe 0.09778 vs a 0.10 bar — but **9/9 sectors improved** and drawdowns fell 48% | sectors 1999-2026 — **spent** |
+| **Vol targeting, national indices pre-1996 (pre-registered)** | **FAIL**: median ΔexSharpe −0.00, only 2/5 improve (Japan +0.20, HK +0.38; Canada −0.10, UK −0.00, Germany −0.19) | 5 indices — **spent** |
+| "Helps most where buy-and-hold is worst" (pre-registered prediction) | **NOT CONFIRMED**: r = −0.089 across 15 series against a −0.30 bar. The pattern was noise and leaves the conclusions | same |
 | Diversified risk-parity book (**construction, not a test**) | 2005+, margin charged: target 20% gives **12.51%/yr, excess Sharpe 0.54, DD −42%, 12.9× growth** vs SPY 10.94% / 0.48 / −55% / 9.5× — **beats SPY on return, excess Sharpe and drawdown**. With futures financing (rf+0.3%): **14.21%/yr, 0.63, −41%, 17.8×**. Lags 2021-2026 (+7.6%/yr vs SPY +15.1%) | data already seen |
 | **Volatility targeting, 17 markets (pre-registered)** | **PASS**, all five: median ΔSharpe +0.14, **17/17 markets improve**, drawdown cut 42%, +0.12 at 10bps, **12/12 parameter cells**. But only **+0.06 of the +0.14 is timing** — the rest is matched-exposure | 17 country ETFs 1996-2026 — **spent** |
 | **Volatility targeting, SPY (pre-registered)** | **FAIL** on the 1993-2001 holdout: Sharpe +0.06 (needed +0.10), plateau 7/12 (needed 8), +0.04 at 10bps. Drawdown criterion passed (−35.6% → −26.9%). Premise held (vol autocorrelation 0.604) | SPY 1993-2001 — **spent, never reuse** |
@@ -352,6 +356,45 @@ test: at Sharpe 0.36 it is ~30 years, at 0.63 about 10. That is why Phase 4 was 
 
 ---
 
+## 8d. What five pre-registered tests actually say (2026-09-23)
+
+| Test | Sample | Verdict |
+|---|---|---|
+| SPY holdout | 1993-2001 | **FAIL** (ΔSharpe +0.06, plateau 7/12) |
+| 17 country ETFs | 1996-2026 | **PASS** (median +0.14, 17/17) |
+| S&P 500 price index | 1928-1992 | **PASS** (+0.19, drawdown −85% → −56%) |
+| 9 SPDR sectors | 1999-2026 | **FAIL by 0.0022** (median 0.09778 vs 0.10; 9/9 improved) |
+| 5 national indices | pre-1996 | **FAIL** (median −0.00, 2/5) |
+
+**Two of five.** Not the "validated" story an earlier draft of this file told. And the
+three samples run on 2026-09-23 were pre-registered as 2-of-3, which they did not meet.
+
+**The conclusion the evidence does support**, because it is the one thing consistent across
+every sample: **volatility targeting reliably reduces drawdown, and does not reliably
+improve risk-adjusted return.**
+
+- drawdown reduction: +34% (S&P 1928-92), +48% median (9/9 sectors), 4 of 5 national
+  indices, +42% (17 countries)
+- Sharpe improvement: +0.19, +0.098, −0.00, +0.14 — inconsistent in size and sign
+
+That matches the decomposition of the country result, where +0.08 of the +0.14 was simply
+holding less equity and only +0.06 was timing. It is a risk-management tool. Presenting it
+as a return enhancer is not supported.
+
+**A prediction that failed, recorded because it was made in advance.** Targeting had
+appeared to help most where buy-and-hold was worst — SPY had the project's best
+buy-and-hold record and failed, the 17 countries had a median Sharpe of 0.29 and all
+improved. Across 15 fresh series the correlation is **r = −0.089** against a pre-registered
+−0.30. Japan carries a 0.77 buy-and-hold Sharpe **and** a +0.20 improvement, which the
+story cannot accommodate. The pattern was noise; it should not be repeated as a reason for
+the SPY failure.
+
+**Every sample above is now spent.** SPY 1993-2001, the 17-country cohort, ^GSPC 1928-1992,
+the 9 sectors, and the pre-1996 national indices. Further testing of this mechanism needs
+data that does not yet exist in this project.
+
+---
+
 ## 9. Open questions
 
 1. **Keep the shadow account running?** Its rule (top 5% of the text score, long-only) has
@@ -403,4 +446,5 @@ test: at Sharpe 0.36 it is ~30 years, at 0.63 about 10. That is why Phase 4 was 
 .venv\Scripts\python.exe research\voltarget_multi.py          # the diversified book (construction)
 .venv\Scripts\python.exe research\voltarget_erc.py            # correlation-aware weighting (rejected)
 .venv\Scripts\python.exe research\voltarget_financing.py      # the financing curve (+1.7%/yr)
+.venv\Scripts\python.exe research\voltarget_deep.py           # three fresh pre-registered tests (1 of 3 pass)
 ```
