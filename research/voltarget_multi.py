@@ -144,10 +144,18 @@ def main():
         print(f"   {lab:<40}{a*100:>8.2f}%{v*100:>8.1f}%{sh:>9.2f}{d*100:>9.0f}%"
               f"{lv.loc['2005':].mean():>8.2f}x")
 
-    print("\n   Sharpe FALLS as leverage rises, 0.83 down to 0.59: margin interest eats the")
-    print("   advantage, and by target 25% the book is simply SPY with extra steps. The")
-    print("   useful point is target 15% — SPY's return with a third less drawdown — not")
-    print("   the highest-return row.")
+    print("\n   CORRECTED 2026-09-23. An earlier version of this note read 'the useful")
+    print("   point is target 15%' and said the book loses to SPY. That was reasoning from")
+    print("   RAW Sharpe, which flatters whichever strategy holds more cash because the")
+    print("   risk-free rate sits in its numerator. On EXCESS Sharpe, over T-bills:")
+    print("      SPY 0.48 · target 10% 0.65 · 15% 0.59 · 20% 0.54 · 25% 0.50")
+    print("   Every target beats SPY, and targets 20% and 25% beat it on return, excess")
+    print("   Sharpe AND drawdown at the same time. Excess Sharpe still declines with")
+    print("   leverage — borrowing is not free — but it does not decline through SPY's.")
+    print("\n   With futures-style financing (rf+0.3%) instead of retail margin, which is")
+    print("   the one improvement of three tested that survived: target 20% gives")
+    print("   14.21%/yr, excess Sharpe 0.63, drawdown -41%, 17.8x growth, against SPY's")
+    print("   10.94%/yr, 0.48, -55% and 9.5x. See research/voltarget_financing.py.")
 
     print("\n   by era (annualised return):")
     for a, b in [("2005", "2012"), ("2013", "2020"), ("2021", "2026")]:

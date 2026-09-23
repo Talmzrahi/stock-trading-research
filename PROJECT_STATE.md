@@ -59,7 +59,7 @@ What has been tested, what it showed, and whether that data is now spent.
 | Correlation-aware weighting (ERC, min-variance) | **REJECTED**: ERC excess Sharpe 0.36 vs inverse-vol 0.62; min-variance 0.49. Shrinking the covariance to its diagonal restores 0.62 — the correlation information is the harm | construction |
 | Trend filter on the diversified book | **REJECTED**: Sharpe 0.72 → 0.54 at 200d, worse at every window, and does not fix 2021-26 | construction |
 | Cost of leverage | futures-style financing (rf+0.3%) vs retail margin (rf+1.5%) buys **+1.7%/yr, +0.09 Sharpe** at target 20% — the largest single improvement found | construction |
-| Diversified risk-parity book (**construction, not a test**) | 2005+: target 15% gives **10.80%/yr, Sharpe 0.72 raw / 0.59 excess, DD −34%** vs SPY 10.94% / 0.58 raw / 0.48 excess / −55%. Sharpe FALLS as leverage rises. Lags badly 2021-2026: +6.6%/yr vs SPY +15.1% | data already seen |
+| Diversified risk-parity book (**construction, not a test**) | 2005+, margin charged: target 20% gives **12.51%/yr, excess Sharpe 0.54, DD −42%, 12.9× growth** vs SPY 10.94% / 0.48 / −55% / 9.5× — **beats SPY on return, excess Sharpe and drawdown**. With futures financing (rf+0.3%): **14.21%/yr, 0.63, −41%, 17.8×**. Lags 2021-2026 (+7.6%/yr vs SPY +15.1%) | data already seen |
 | **Volatility targeting, 17 markets (pre-registered)** | **PASS**, all five: median ΔSharpe +0.14, **17/17 markets improve**, drawdown cut 42%, +0.12 at 10bps, **12/12 parameter cells**. But only **+0.06 of the +0.14 is timing** — the rest is matched-exposure | 17 country ETFs 1996-2026 — **spent** |
 | **Volatility targeting, SPY (pre-registered)** | **FAIL** on the 1993-2001 holdout: Sharpe +0.06 (needed +0.10), plateau 7/12 (needed 8), +0.04 at 10bps. Drawdown criterion passed (−35.6% → −26.9%). Premise held (vol autocorrelation 0.604) | SPY 1993-2001 — **spent, never reuse** |
 | **Long-short grid, 27 configs** | best is PEAD 10% / 20-session: **+3.57%/yr, Sharpe 0.36, p=0.207**; −2.60%/yr in 2014-19, +8.83%/yr in 2020-26; +0.67%/yr at 20bps a side | S&P 500 development, fitted search |
@@ -319,6 +319,39 @@ without this paragraph. `research/sp1500_gate.py` carries the guard and the hone
 
 ---
 
+## 8c. Backtest mechanics are now shared and tested (2026-09-23)
+
+Five errors between 2026-09-21 and 2026-09-23, every one of which returned a number that
+looked like a finding, and every one of which was a line of arithmetic written slightly
+wrong in a script with no tests:
+
+| | error | cost of it |
+|---|---|---|
+| 1 | in-sample ranking (`pd.qcut` over the whole sample) | +8.85%/yr → +1.18%/yr |
+| 2 | full-sample `mean + k·sd` threshold | +9.54%/yr → +1.65%/yr (−2.65% on 1y) |
+| 3 | `out_of_fold` trains on later folds | ~half the remaining effect |
+| 4 | `side` applied AFTER the cost subtraction | +1.51%/yr → +0.58%/yr |
+| 5 | post-hoc vol matching with no margin charged | showed 165× growth |
+
+Four are timing errors, one is accounting. `research/mechanics.py` now holds the correct
+version of each — `hold_from_month_end`, `trailing_stats`, `position_book`,
+`levered_return`, `performance`, `years_to_significance` — with each docstring naming the
+error it prevents. `tests/test_mechanics.py` encodes all five as regressions; the suite is
+94 tests, up from 75. Reintroducing error 4 makes a short position's cost a **gain** of
++0.0020 where the test asserts a loss, so it fails.
+
+**Use these rather than rewriting them.** The existing scripts still carry their own
+copies; new work should not.
+
+`performance()` reports excess Sharpe (over T-bills) **and** raw, because raw flatters
+whichever strategy holds more cash and quoting only one lets it be chosen quietly. Every
+Sharpe recorded before 2026-09-23 in this file was raw.
+
+`years_to_significance()` exists to be quoted before anyone proposes a shadow book as a
+test: at Sharpe 0.36 it is ~30 years, at 0.63 about 10. That is why Phase 4 was not built.
+
+---
+
 ## 9. Open questions
 
 1. **Keep the shadow account running?** Its rule (top 5% of the text score, long-only) has
@@ -356,6 +389,7 @@ without this paragraph. `research/sp1500_gate.py` carries the guard and the hone
 
 ```
 .venv\Scripts\python.exe -m unittest discover -s tests -t .     # 75 tests
+.venv\Scripts\python.exe -m unittest discover -s tests -t .     # 94 tests (19 are mechanics regressions)
 .venv\Scripts\python.exe -m trader.run_daily --dry-run          # full pipeline, saves nothing
 .venv\Scripts\python.exe research\inference_check.py            # the PEAD re-check (T0/T1/T2/T3)
 .venv\Scripts\python.exe research\v3_readers_eval.py            # reader comparison
@@ -368,4 +402,5 @@ without this paragraph. `research/sp1500_gate.py` carries the guard and the hone
 .venv\Scripts\python.exe research\voltarget_intl.py           # the international replication (PASS)
 .venv\Scripts\python.exe research\voltarget_multi.py          # the diversified book (construction)
 .venv\Scripts\python.exe research\voltarget_erc.py            # correlation-aware weighting (rejected)
+.venv\Scripts\python.exe research\voltarget_financing.py      # the financing curve (+1.7%/yr)
 ```
