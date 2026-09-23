@@ -56,6 +56,7 @@ What has been tested, what it showed, and whether that data is now spent.
 | v3 reader, explaining the announcement move | **works**: R² 0.0853 vs 0.0716 from the surprise alone, 23,997 releases | S&P 500 development |
 | v3 as a long-only trade | **fails the gate**: top 5% −0.051pp/trade (p=0.95), calendar-time alpha −1.82%/yr (p=0.58) | same |
 | **PEAD gate on the pooled S&P 1500** | T1 +2.45pp (p=0.014); **T2 alpha +0.29%/yr, 95% CI [−5.5, +6.0]**, beta 1.39 | S&P 500 + 400/600 prices — both already examined |
+| Correlation-aware weighting (ERC, min-variance) | **REJECTED**: ERC excess Sharpe 0.36 vs inverse-vol 0.62; min-variance 0.49. Shrinking the covariance to its diagonal restores 0.62 — the correlation information is the harm | construction |
 | Trend filter on the diversified book | **REJECTED**: Sharpe 0.72 → 0.54 at 200d, worse at every window, and does not fix 2021-26 | construction |
 | Cost of leverage | futures-style financing (rf+0.3%) vs retail margin (rf+1.5%) buys **+1.7%/yr, +0.09 Sharpe** at target 20% — the largest single improvement found | construction |
 | Diversified risk-parity book (**construction, not a test**) | 2005+: target 15% gives **10.80%/yr, Sharpe 0.72 raw / 0.59 excess, DD −34%** vs SPY 10.94% / 0.58 raw / 0.48 excess / −55%. Sharpe FALLS as leverage rises. Lags badly 2021-2026: +6.6%/yr vs SPY +15.1% | data already seen |
@@ -366,4 +367,5 @@ without this paragraph. `research/sp1500_gate.py` carries the guard and the hone
 .venv\Scripts\python.exe research\voltarget_test.py           # the pre-registered vol-targeting test (FAIL)
 .venv\Scripts\python.exe research\voltarget_intl.py           # the international replication (PASS)
 .venv\Scripts\python.exe research\voltarget_multi.py          # the diversified book (construction)
+.venv\Scripts\python.exe research\voltarget_erc.py            # correlation-aware weighting (rejected)
 ```
