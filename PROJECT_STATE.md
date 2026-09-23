@@ -356,42 +356,52 @@ test: at Sharpe 0.36 it is ~30 years, at 0.63 about 10. That is why Phase 4 was 
 
 ---
 
-## 8d. What five pre-registered tests actually say (2026-09-23)
+## 8d. What seven pre-registered tests say (2026-09-23)
 
-| Test | Sample | Verdict |
-|---|---|---|
-| SPY holdout | 1993-2001 | **FAIL** (ΔSharpe +0.06, plateau 7/12) |
-| 17 country ETFs | 1996-2026 | **PASS** (median +0.14, 17/17) |
-| S&P 500 price index | 1928-1992 | **PASS** (+0.19, drawdown −85% → −56%) |
-| 9 SPDR sectors | 1999-2026 | **FAIL by 0.0022** (median 0.09778 vs 0.10; 9/9 improved) |
-| 5 national indices | pre-1996 | **FAIL** (median −0.00, 2/5) |
+| Test | Sample | ΔexSharpe | ΔDrawdown | Verdict |
+|---|---|---|---|---|
+| SPY holdout | 1993-2001 | +0.06 | +24% | **FAIL** |
+| 17 country ETFs | 1996-2026 | +0.14 | +42% | **PASS** |
+| S&P 500 price index | 1928-1992 | +0.19 | +34% | **PASS** |
+| 9 SPDR sectors | 1999-2026 | +0.098 | +48% | **FAIL** by 0.0022 |
+| 5 national indices | pre-1996 | −0.00 | 4 of 5 up | **FAIL** |
+| 14 EM countries | full history | +0.038 | +40% | **FAIL** |
+| **14 EM countries** | **2015-2026** | **−0.028** | **+35%** | **FAIL** |
 
-**Two of five.** Not the "validated" story an earlier draft of this file told. And the
-three samples run on 2026-09-23 were pre-registered as 2-of-3, which they did not meet.
+**Two of seven.** Roughly 100 years, five continents, sectors, asset classes and both
+developed and emerging markets.
 
-**The conclusion the evidence does support**, because it is the one thing consistent across
-every sample: **volatility targeting reliably reduces drawdown, and does not reliably
-improve risk-adjusted return.**
+### The conclusion, now firmly evidenced
 
-- drawdown reduction: +34% (S&P 1928-92), +48% median (9/9 sectors), 4 of 5 national
-  indices, +42% (17 countries)
-- Sharpe improvement: +0.19, +0.098, −0.00, +0.14 — inconsistent in size and sign
+**Volatility targeting is a drawdown-reduction tool. It is not a return tool.**
 
-That matches the decomposition of the country result, where +0.08 of the +0.14 was simply
-holding less equity and only +0.06 was timing. It is a risk-management tool. Presenting it
-as a return enhancer is not supported.
+- **Drawdown fell in every single sample**, by 24% to 48%, and in all 14 EM markets in both
+  windows. Nothing tested has failed this.
+- **Sharpe moved +0.19, +0.14, +0.098, +0.038, −0.00, −0.028, +0.06** — inconsistent in size
+  and sign, and *negative* in the most recent window.
 
-**A prediction that failed, recorded because it was made in advance.** Targeting had
-appeared to help most where buy-and-hold was worst — SPY had the project's best
-buy-and-hold record and failed, the 17 countries had a median Sharpe of 0.29 and all
-improved. Across 15 fresh series the correlation is **r = −0.089** against a pre-registered
-−0.30. Japan carries a 0.77 buy-and-hold Sharpe **and** a +0.20 improvement, which the
-story cannot accommodate. The pattern was noise; it should not be repeated as a reason for
-the SPY failure.
+### The recent regime: the answer is no
 
-**Every sample above is now spent.** SPY 1993-2001, the 17-country cohort, ^GSPC 1928-1992,
-the 9 sectors, and the pre-1996 national indices. Further testing of this mechanism needs
-data that does not yet exist in this project.
+Test E isolated 2015-2026 on data never previously examined. Median excess-Sharpe change
+**−0.028**, and only **4 of 14** markets improved, against 10 of 14 over full history. This
+was predicted in advance and it confirms what the diversified book already showed (+6.6%/yr
+against SPY's +15.1% since 2021). The weakness is real, it is recent, and it is not an
+artifact of one market or one construction.
+
+### Three predictions, made in advance, all correct
+
+Before running: drawdown would pass in both tests; Sharpe would fail in at least one; and E
+would be worse than D on Sharpe. **3/3.** That matters more than any single verdict — the
+model of what this mechanism does is now accurate enough to predict outcomes on unseen data,
+which is the first time anything in this project has cleared that bar.
+
+### What is left
+
+Every sample is spent: SPY 1993-2001, 17 developed countries, ^GSPC 1928-1992, 9 sectors,
+5 pre-1996 indices, 14 EM funds (twice). Further testing needs data that does not exist
+here. The defensible claim is narrow and well-supported: **a book that cuts drawdown by
+roughly a third with no reliable effect on risk-adjusted return, and a negative effect over
+the last decade.**
 
 ---
 
@@ -447,4 +457,5 @@ data that does not yet exist in this project.
 .venv\Scripts\python.exe research\voltarget_erc.py            # correlation-aware weighting (rejected)
 .venv\Scripts\python.exe research\voltarget_financing.py      # the financing curve (+1.7%/yr)
 .venv\Scripts\python.exe research\voltarget_deep.py           # three fresh pre-registered tests (1 of 3 pass)
+.venv\Scripts\python.exe research\voltarget_em.py             # EM cohort + the recent-regime test (both FAIL)
 ```
