@@ -64,7 +64,7 @@ What has been tested, what it showed, and whether that data is now spent.
 | **Vol targeting, national indices pre-1996 (pre-registered)** | **FAIL**: median ΔexSharpe −0.00, only 2/5 improve (Japan +0.20, HK +0.38; Canada −0.10, UK −0.00, Germany −0.19) | 5 indices — **spent** |
 | "Helps most where buy-and-hold is worst" (pre-registered prediction) | **NOT CONFIRMED**: r = −0.089 across 15 series against a −0.30 bar. The pattern was noise and leaves the conclusions | same |
 | Diversified risk-parity book (**construction, not a test**) | 2005+, margin charged: target 20% gives **12.51%/yr, excess Sharpe 0.54, DD −42%, 12.9× growth** vs SPY 10.94% / 0.48 / −55% / 9.5× — **beats SPY on return, excess Sharpe and drawdown**. With futures financing (rf+0.3%): **14.21%/yr, 0.63, −41%, 17.8×**. Lags 2021-2026 (+7.6%/yr vs SPY +15.1%) | data already seen |
-| **Volatility targeting, 17 markets (pre-registered)** | **PASS**, all five: median ΔSharpe +0.14, **17/17 markets improve**, drawdown cut 42%, +0.12 at 10bps, **12/12 parameter cells**. But only **+0.06 of the +0.14 is timing** — the rest is matched-exposure | 17 country ETFs 1996-2026 — **spent** |
+| **Volatility targeting, 17 markets (pre-registered)** | **PASS as executed, but on RAW Sharpe** (+0.144). On excess Sharpe, the standard, the median is **+0.067 — below the +0.10 bar**; 17/17 still improve and drawdown still falls 42%. Raw Sharpe flatters the strategy holding more cash, which is exactly what this one does | 17 country ETFs 1996-2026 — **spent** |
 | **Volatility targeting, SPY (pre-registered)** | **FAIL** on the 1993-2001 holdout: Sharpe +0.06 (needed +0.10), plateau 7/12 (needed 8), +0.04 at 10bps. Drawdown criterion passed (−35.6% → −26.9%). Premise held (vol autocorrelation 0.604) | SPY 1993-2001 — **spent, never reuse** |
 | **Long-short grid, 27 configs** | best is PEAD 10% / 20-session: **+3.57%/yr, Sharpe 0.36, p=0.207**; −2.60%/yr in 2014-19, +8.83%/yr in 2020-26; +0.67%/yr at 20bps a side | S&P 500 development, fitted search |
 | **Survivorship in 2008-2010** | that window alone: **T2 alpha +24.49%/yr, CI [+1.6, +47.4]** off 184 trades — excluded from the analysis window | S&P 500, 54% price coverage |
@@ -361,14 +361,14 @@ test: at Sharpe 0.36 it is ~30 years, at 0.63 about 10. That is why Phase 4 was 
 | Test | Sample | ΔexSharpe | ΔDrawdown | Verdict |
 |---|---|---|---|---|
 | SPY holdout | 1993-2001 | +0.06 | +24% | **FAIL** |
-| 17 country ETFs | 1996-2026 | +0.14 | +42% | **PASS** |
+| 17 country ETFs | 1996-2026 | +0.067 excess (+0.144 raw) | +42% | **PASS on raw, FAIL on excess** |
 | S&P 500 price index | 1928-1992 | +0.19 | +34% | **PASS** |
 | 9 SPDR sectors | 1999-2026 | +0.098 | +48% | **FAIL** by 0.0022 |
 | 5 national indices | pre-1996 | −0.00 | 4 of 5 up | **FAIL** |
 | 14 EM countries | full history | +0.038 | +40% | **FAIL** |
 | **14 EM countries** | **2015-2026** | **−0.028** | **+35%** | **FAIL** |
 
-**Two of seven.** Roughly 100 years, five continents, sectors, asset classes and both
+**Two of seven as executed; one of seven on a consistent excess-Sharpe basis** (§8e). Roughly 100 years, five continents, sectors, asset classes and both
 developed and emerging markets.
 
 ### The conclusion, now firmly evidenced
@@ -402,6 +402,71 @@ Every sample is spent: SPY 1993-2001, 17 developed countries, ^GSPC 1928-1992, 9
 here. The defensible claim is narrow and well-supported: **a book that cuts drawdown by
 roughly a third with no reliable effect on risk-adjusted return, and a negative effect over
 the last decade.**
+
+---
+
+## 8e. What separates passes from failures (2026-09-24, post-hoc)
+
+`research/voltarget_synthesis.py`. **Post-hoc on spent data** — every sample below already
+carries a verdict, so this explains those verdicts and generates hypotheses; it proves
+nothing. 61 series, not independent.
+
+### A correction first
+
+The 17-country test measured **raw** Sharpe (`voltarget_intl.py`'s `stats()` returns
+`ann / vol`). On excess Sharpe its median improvement is **+0.067**, not +0.144, which misses
+the +0.10 bar. The bias runs in the strategy's favour by construction — it holds cash, and
+raw Sharpe puts the risk-free rate in the numerator — and it was identified on 2026-09-23
+without going back to check which verdicts depended on it. This one did. On a consistent
+basis **one of seven tests passes**: the S&P 500 1928-1992.
+
+### The mechanism explains the verdicts; the intuitive stories do not
+
+Correlation of each series' Sharpe improvement with:
+
+| candidate | r | rank r |
+|---|---|---|
+| **month-end volatility vs the NEXT month's return** | **−0.718** | **−0.699** |
+| **volatility persistence** | **+0.457** | **+0.537** |
+| buy-and-hold Sharpe (the story pre-registered and failed) | +0.186 | +0.176 |
+| how long the worst drawdown took to bottom ("slow bears") | −0.109 | −0.029 |
+
+Targeting cuts exposure when volatility is high. It works when two things hold:
+**volatility is persistent**, so today's estimate is still true next month; and **high
+volatility precedes weak returns**, so stepping aside avoids losses rather than missing a
+rebound. Together these account for about half the cross-series variance (r² ≈ 0.52).
+
+The two failures that looked mysterious are explained by one leg each:
+
+- **Pre-1996 national indices** had *favourable* vol→return (−0.027) but the lowest
+  persistence of any sample (0.36). The estimate was stale by the time it was used.
+- **EM 2015-2026** had the **most positive vol→return of any sample, +0.156** — high
+  volatility has been followed by rebounds. That is the recent regime in one number, and it
+  is why targeting has stopped working: de-risking into a spike that reverses is a loss.
+
+### The passes are episodes
+
+Removing each series' worst drawdown (peak to trough plus six months):
+
+| | with | without |
+|---|---|---|
+| S&P 500 1928-1992 | +0.186 | **+0.054** — the Depression is ~70% of the result |
+| 17 countries | +0.067 | +0.031 |
+| 9 sectors | +0.098 | +0.050 |
+| EM 2015-2026 | −0.028 | **+0.025** — COVID's V-shape was the damage |
+
+### The one thing that behaves like a law
+
+| across 61 series | share |
+|---|---|
+| **drawdown smaller** | **98%** |
+| return per unit of drawdown higher | 80% |
+| excess Sharpe higher | 72% — but small, and episode-driven |
+| **raw return lower** | **67% — the premium paid for the insurance** |
+
+Volatility targeting is insurance. It pays out in slow, persistent crashes, costs a premium
+in most other years, and costs more than usual in a regime where volatility spikes get
+bought — which describes the last decade.
 
 ---
 
@@ -458,4 +523,5 @@ the last decade.**
 .venv\Scripts\python.exe research\voltarget_financing.py      # the financing curve (+1.7%/yr)
 .venv\Scripts\python.exe research\voltarget_deep.py           # three fresh pre-registered tests (1 of 3 pass)
 .venv\Scripts\python.exe research\voltarget_em.py             # EM cohort + the recent-regime test (both FAIL)
+.venv\Scripts\python.exe research\voltarget_synthesis.py      # what separates passes from failures (post-hoc)
 ```
