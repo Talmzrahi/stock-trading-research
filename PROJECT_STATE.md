@@ -464,6 +464,27 @@ Removing each series' worst drawdown (peak to trough plus six months):
 | excess Sharpe higher | 72% — but small, and episode-driven |
 | **raw return lower** | **67% — the premium paid for the insurance** |
 
+### It explains the past and cannot predict the future
+
+The obvious next step was a regime-aware version: estimate persistence and the vol→return
+relation on trailing data, and target only when both look favourable. Checked before
+building it, by splitting all 61 series in half by time:
+
+| | r |
+|---|---|
+| vol→return, first half vs second half | **−0.283** — it does not persist, it tends to *reverse* |
+| Sharpe gain, first half vs second half | **−0.032** — whether it helped before says nothing |
+| first-half vol→return predicting second-half gain | **+0.151** — wrong sign, and weak |
+| *same-period* vol→return against the same period's gain | *−0.832* |
+
+The variable that decides whether targeting works is itself not forecastable from its own
+history. **The mechanism explains outcomes almost perfectly after the fact (r = −0.83) and
+has no power in advance.** A regime-conditional version was therefore not built: it would
+need to forecast the one quantity the data says cannot be forecast from its past.
+
+This is the pattern of the whole project in one table. Every in-sample explanation here
+has been strong; every attempt to use one out of sample has been weak.
+
 Volatility targeting is insurance. It pays out in slow, persistent crashes, costs a premium
 in most other years, and costs more than usual in a regime where volatility spikes get
 bought — which describes the last decade.
