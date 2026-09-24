@@ -63,6 +63,8 @@ What has been tested, what it showed, and whether that data is now spent.
 | **Vol targeting, 9 SPDR sectors (pre-registered)** | **FAIL by 0.0022**: median ΔexSharpe 0.09778 vs a 0.10 bar — but **9/9 sectors improved** and drawdowns fell 48% | sectors 1999-2026 — **spent** |
 | **Vol targeting, national indices pre-1996 (pre-registered)** | **FAIL**: median ΔexSharpe −0.00, only 2/5 improve (Japan +0.20, HK +0.38; Canada −0.10, UK −0.00, Germany −0.19) | 5 indices — **spent** |
 | "Helps most where buy-and-hold is worst" (pre-registered prediction) | **NOT CONFIRMED**: r = −0.089 across 15 series against a −0.30 bar. The pattern was noise and leaves the conclusions | same |
+| Switch targeting on only in real-time bear markets | **REJECTED**: targeted only below the 200-day average ΔexSharpe −0.020, only when down 20% −0.034, against +0.046 left on always. Real-time signals arrive after 31-59% of the fall | 61 series, post-hoc |
+| Is the S&P 1928-1992 pass real timing? (permutation) | **YES**: 0 of 1,000 books with the same weights shuffled across months matched +0.186 (best +0.120, mean −0.064) | post-hoc |
 | Diversified risk-parity book (**construction, not a test**) | 2005+, margin charged: target 20% gives **12.51%/yr, excess Sharpe 0.54, DD −42%, 12.9× growth** vs SPY 10.94% / 0.48 / −55% / 9.5× — **beats SPY on return, excess Sharpe and drawdown**. With futures financing (rf+0.3%): **14.21%/yr, 0.63, −41%, 17.8×**. Lags 2021-2026 (+7.6%/yr vs SPY +15.1%) | data already seen |
 | **Volatility targeting, 17 markets (pre-registered)** | **PASS as executed, but on RAW Sharpe** (+0.144). On excess Sharpe, the standard, the median is **+0.067 — below the +0.10 bar**; 17/17 still improve and drawdown still falls 42%. Raw Sharpe flatters the strategy holding more cash, which is exactly what this one does | 17 country ETFs 1996-2026 — **spent** |
 | **Volatility targeting, SPY (pre-registered)** | **FAIL** on the 1993-2001 holdout: Sharpe +0.06 (needed +0.10), plateau 7/12 (needed 8), +0.04 at 10bps. Drawdown criterion passed (−35.6% → −26.9%). Premise held (vol autocorrelation 0.604) | SPY 1993-2001 — **spent, never reuse** |
@@ -491,6 +493,67 @@ bought — which describes the last decade.
 
 ---
 
+## 8f. Bear markets, and what a broad search would find (2026-09-24, post-hoc)
+
+### It is a bear-market tool, and you cannot switch it on only in bear markets
+
+`research/bear_regimes.py`, 61 series. Targeted minus buy-and-hold, annualised, medians:
+
+| when | edge |
+|---|---|
+| **hindsight** bear markets, peak to trough | **+17.7%/yr** |
+| price below its 200-day average (knowable at the time) | **−6.4%/yr** |
+| already down 20% from the peak (knowable at the time) | **−7.5%/yr** |
+| outside hindsight bear markets | −10.3%/yr |
+
+In a bear market recognised afterwards, targeting is excellent. In every bear market as a
+real-time signal would have defined it, it loses. Across 272 bear markets, by the time price
+fell below its 200-day average **31% of the eventual fall was already gone**; by the time it
+was 20% off the peak, **59%**. And of the days each signal called "bear", only 45% and 32%
+were actually falling — the rest were the bottom and the rebound, which is exactly where
+de-risking costs money.
+
+Hence the switching rule loses to leaving it on: ΔexSharpe −0.020 (below 200-day) and
+−0.034 (down 20%) against **+0.046** always on, with worse drawdowns (−49%, −47% against
+−36%). **Volatility is already the fastest real-time bear signal available** — it rises at the
+start of a decline, before price crosses a moving average — so gating it behind a slower
+signal only makes it later. The way to own the bear-market payoff is to hold the insurance
+all the time and pay the premium in normal years.
+
+And the timing it does have is real. `research/noise_search.py` keeps the S&P 1928-1992
+weights and shuffles them across months — identical exposures, timing destroyed. **None of
+1,000 shuffled books matched the actual +0.186** (mean −0.064, 95th percentile +0.025, best
++0.120). Whatever drives the one surviving pass, it is not having the right exposure at a
+lucky moment.
+
+### "Try as many things as possible until something clicks"
+
+The same script feeds the gate's T2 test strategies that contain **no information**:
+
+| | tested | passed | best result |
+|---|---|---|---|
+| coin-flip timing rules | 1,000 | **20** | alpha +3.13%/yr, **p = 0.0009** |
+| pairwise "interactions" of 40 coin flips | 780 | **64** (8.2%) | alpha +2.51%/yr, p = 0.0004 |
+
+Best of *n* noise rules: 1 tried, p = 0.35; 10, p = 0.13; **100, p = 0.0014**; 1,000,
+p = 0.0009. By a hundred tries, pure noise produces a +3%/yr alpha that would clear this
+project's T2. The best of a thousand reaches p = 0.0009 — the same p-value as the S&P 400/600
+result this project was once built on.
+
+**Interactions make it worse, not better.** Pairs share components, so one lucky base
+signal manufactures dozens of correlated "discoveries": 8.2% of noise interactions passed
+against 2.0% of single rules.
+
+A checker is good because it is pointed at few hypotheses, each once, on fresh data. Pointed
+at a firehose it becomes a false-positive generator. The legitimate version of a broad search
+needs three things this project does not yet have: **a ledger that counts every trial**, a
+**pass bar that scales with that count** (Bonferroni at 1,000 trials is p < 0.00005, which
+none of the noise above reaches), and a **discovery / validation / holdout split fixed before
+the search starts**. The shuffle null above is the other half: a strategy must beat its own
+exposures reordered at random, not just zero.
+
+---
+
 ## 9. Open questions
 
 1. **Keep the shadow account running?** Its rule (top 5% of the text score, long-only) has
@@ -545,4 +608,6 @@ bought — which describes the last decade.
 .venv\Scripts\python.exe research\voltarget_deep.py           # three fresh pre-registered tests (1 of 3 pass)
 .venv\Scripts\python.exe research\voltarget_em.py             # EM cohort + the recent-regime test (both FAIL)
 .venv\Scripts\python.exe research\voltarget_synthesis.py      # what separates passes from failures (post-hoc)
+.venv\Scripts\python.exe research\bear_regimes.py             # can bear markets be seen in time? (no)
+.venv\Scripts\python.exe research\noise_search.py             # what the gate passes when fed pure noise
 ```
