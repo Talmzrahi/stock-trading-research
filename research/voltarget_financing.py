@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 import numpy as np, pandas as pd
 sys.stdout.reconfigure(encoding="utf-8")
-ROOT=Path(r"C:\Users\tmizr\OneDrive\Desktop\Sentiment assemnet project")
+ROOT=Path(__file__).resolve().parent.parent
 sys.path.insert(0,str(ROOT)); sys.path.insert(0,str(ROOT/"research"))
 from voltarget_multi import BUCKETS, LOOK, COST, load, stats, month_ends
 

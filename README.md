@@ -1,80 +1,85 @@
-# PEAD stock trader
+# Sentiment Arbitrage — a trading research system
 
-A low-frequency, long-only equity strategy that buys large-cap US stocks after unusually
-large positive earnings surprises and holds them for about three months — plus the
-validation machinery that decides whether a signal is allowed to trade at all.
+An AI-assisted system for finding, testing and paper-trading stock-market signals, built on
+free data in 11 days (14–24 September 2026). It has three tracks: an earnings-surprise
+strategy running on a paper account, language models reading 23,997 SEC earnings
+releases, and a century-long study of volatility targeting.
 
-The strategy itself is ordinary: post-earnings-announcement drift has been documented
-since 1968. The part worth reading is [ROADMAP.md](ROADMAP.md), which records what was
-tested, what failed, and why the surviving specification is what it is.
+**The short version:** the engineering works and the testing is strict. Nothing tested
+beats the market once overlapping trades, market risk, survivorship and hindsight are
+accounted for. The record of how each result was checked, including the ones that failed,
+is the main output.
 
-## The strategy
+This repository is the project as of 2026-09-24 12:22 (tag `snapshot-2026-09-24`), with a
+documentation cleanup on top.
 
-| | |
+## What was built
+
+| Part | What it does |
 |---|---|
-| Trigger | Quarterly earnings announcement, S&P 500 members |
-| Signal | Price-scaled surprise `(actual EPS − estimate) / price`, ranked against the trailing 365 days |
-| Entry | Top 5% of that ranking, at the first close a trader could act on |
-| Exit | 60 trading sessions, or a 12-sd volatility trailing stop |
-| Idle cash | Held in SPY |
-| Sizing | Fixed fraction of equity at entry, never rebalanced |
+| `trader/` | One code path for backtest and live: earnings events → signal → exits and sizing → engine → broker (simulated market-on-close ledger, or Alpaca paper) → state, monitoring, daily report. Runs on a weekday schedule. |
+| `trader/text/` | Reads each day's SEC 8-K earnings releases: finds the filing, checks it was public before the decision, separates what is new from boilerplate, reads it with three free language models (FinBERT, DistilRoBERTa-finance, MiniLM) and scores it. Trades a separate shadow account. |
+| `research/` | Data ingestion, a point-in-time index universe, the validation gate, pre-registrations, and every experiment with its result in its header. |
+| `tests/` | 94 stdlib `unittest` tests, including regressions for five past calculation errors. |
 
-Backtest on a point-in-time, survivorship-repaired universe (2011-2026): **+16.6% a year
-vs SPY's +13.9%**, max drawdown −46%, ~68 trades a year, +1.76pp alpha per trade.
-Walk-forward, re-choosing the stop each year from prior data only: **+15.15% vs +13.66%**.
+## What it found
 
-## What was rejected
+| Idea | Result |
+|---|---|
+| Earnings beats pay more when the VIX is high (the founding idea) | No effect on 42,191 events |
+| Post-earnings drift, top 5% of surprises (the live paper strategy) | Backtest +16.6%/yr vs SPY +13.9% (2011–2026), but +1.06%/yr (p=0.75) after adjusting for its higher market risk |
+| The same, out of sample on S&P 400/600, pre-registered | Passed (+2.73pp per trade, p=0.0009), then failed a stricter test for overlapping trades (alpha +2.94%/yr, p=0.37) |
+| Sentiment of SEC 8-K text, one-shot 2020–2026 holdout | Failed (+0.43pp, p=0.38) |
+| Language models reading earnings releases | Explain the earnings-day move better than the numbers alone (R² 0.0716 → 0.0853) but predict nothing after it; the long-only trade fails the gate |
+| Volatility targeting, 7 pre-registered tests over ~100 years | One clean pass (S&P 500 1928–1992, mostly the Great Depression). Drawdowns smaller in 98% of 61 series, returns lower in 67% |
+| Volatility targeting in bear markets | +17.7%/yr over buy-and-hold in bear markets dated with hindsight; −6.4% and −7.5%/yr when they must be recognised in real time |
+| The gate fed 1,000 coin-flip rules | 20 passed (best p=0.0009), which is why a broad search needs a stricter bar |
 
-- **The founding hypothesis.** "Earnings beats pay extra when VIX is elevated" — tested on
-  42,191 events, interaction ≈ 0 at every horizon (p 0.50-0.94). Rejected.
-- **The first passing version of this strategy.** Its universe contained only firms still
-  in the index today. With 100 departed firms restored and ticker renames matched by SEC
-  CIK, the pre-registered test failed (+0.767pp, p=0.063) and the build stopped.
-- **Hindsight-fitted parameters.** Re-selecting settings each year without hindsight kept
-  only 9% of the original excess return.
+Every number, with its caveats: [PROJECT_STATE.md](PROJECT_STATE.md). The history and the
+decisions behind it: [ROADMAP.md](ROADMAP.md).
 
-The tighter cutoff that replaced it was pre-registered ([research/prereg_midsmall.md](research/prereg_midsmall.md),
-committed before the data existed) and tested once on 1,152 S&P 400/600 firms the project
-had never touched: **+2.73pp per trade, p=0.0009**.
+## How results are checked
 
-## Honest caveats
-
-- The effect is **era-dependent** in every sample: mid/small-cap returns concentrate in
-  2019-2022; the S&P 500 version lost to SPY in 2014, 2017-2020, 2023 and 2024.
-- **The whole edge lives in volatile stocks.** Split by volatility at entry, the top third
-  earns +4.88pp per trade (p=0.001) while the bottom two thirds earn nothing (-0.10pp and
-  +0.49pp). It is the signal rather than beta — in equally volatile stocks, ordinary
-  earnings events earn +0.06pp — but the strategy only works where price swings are large,
-  so drawdowns are the price of entry.
-- **Delisted firms are still missing** (207 S&P 500, 543 mid/small — Yahoo drops them), but
-  the damage is now measured rather than feared: 53% of them were acquired (deals close at
-  a premium, so those are missing *winners*) and only 1% failed outright. Estimated cost
-  to the backtest: **0.3-0.8pp a year**. See [research/survivorship_test.py](research/survivorship_test.py).
-- Paper trading only. Nothing here is investment advice.
+- **Pre-registration:** the rule and pass mark are committed before any return is computed
+  (`research/prereg_*.md`).
+- **One-shot holdouts:** data used for a verdict is never reused.
+- **An overlap-robust gate:** quarter-clustered standard errors (T1) and a calendar-time,
+  market-adjusted alpha with Newey-West errors (T2), in `research/inference_check.py`.
+- **A point-in-time universe:** index membership by quarter, matched by SEC company ID
+  through ticker changes. Survivorship is measured, not assumed.
+- **Shared, tested mechanics:** `research/mechanics.py`, where each function guards against
+  an error this project actually made.
 
 ## Layout
 
 ```
-trader/      the system: events -> signals -> fusion -> portfolio/exits -> engine
-             -> broker (simulated or Alpaca paper) -> monitoring/report
-research/    data ingestion, the gates, pre-registrations, stress tests
-config/      gate-selected parameters + the tripwire band (committed)
-data_archive/ perishable data: scored news, index membership snapshots
-tests/       stdlib unittest
+trader/        the system (backtest and live share it)
+trader/text/   the earnings-release reader
+research/      ingestion, gates, pre-registrations, experiments
+config/        live parameters with their evidence, the text model, the tripwire band
+data_archive/  perishable data kept in git: scored news, index snapshots, reader outputs
+tests/         stdlib unittest
+scripts/       Windows Task Scheduler setup
 ```
-
-The backtest and the live run share the same modules, so there is no "the backtest did
-something the live code doesn't" gap.
 
 ## Running it
 
 ```
-python -m venv .venv && .venv\Scripts\pip install -r requirements.txt
-python research/archive.py restore     # perishable data (news, membership)
-python research/ingest.py              # prices, VIX, earnings (re-downloadable)
-python -m trader.run_daily --dry-run   # decide and report, save nothing
-python -m unittest discover -s tests -t .
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\python.exe -m unittest discover -s tests -t .
+.venv\Scripts\python.exe research\archive.py restore     # perishable data from data_archive/
+.venv\Scripts\python.exe research\ingest.py              # prices, VIX, earnings
+.venv\Scripts\python.exe research\vol_ingest.py          # index and ETF prices for volatility targeting
+.venv\Scripts\python.exe research\edgar_filings.py       # SEC earnings releases (hours, resumable)
 ```
 
-Data lives in SQLite under `data/` (gitignored: ~500MB, all re-downloadable except the
-archives above). `scripts/install_task.ps1` registers the weekday run on Windows.
+Data lives in SQLite under `data/` (gitignored, several GB with the SEC filings). Free
+sources only: Yahoo Finance via yfinance, SEC EDGAR, Wikipedia, and Finnhub's free tier.
+`python -m trader.run_daily --dry-run` decides and reports without trading, but still
+refreshes prices into `data/research.db`.
+
+## Notes
+
+- Paper trading only. Nothing here is investment advice.
+- Built with Claude Code as a pair programmer; the commits are co-authored.

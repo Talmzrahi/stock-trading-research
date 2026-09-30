@@ -3,7 +3,7 @@
 Trading system that fuses numerical data, non-standard/alternative signals, and news
 sentiment to trade the gap between market sentiment and company fundamentals.
 
-**Where it stands (2026-09-18):** a simulated paper-trading loop is built for one
+**Where it stands (2026-09-24):** a simulated paper-trading loop is built for one
 signal — post-earnings drift on unusually large EPS surprises. It is a
 low-frequency, long-only, event-driven strategy: buy S&P 500 stocks whose price-scaled
 surprise is in the top 5% of the trailing year, hold 60 sessions or until a 12-sd
@@ -12,7 +12,9 @@ passed the date-clustered gate but not overlap-robust, market-adjusted inference
 (Phase 2e). The strategy is not shown to beat SPY after market exposure. The
 original VIX-regime idea was rejected (Phase 1). The fusion thesis was tested on SEC
 earnings-release text and **failed** its pre-registered holdout (Phase 3a), so
-sentiment stays out of the system.
+sentiment stays out of the system. From 2026-09-22 a separate track tested volatility
+targeting: it reliably cuts drawdowns but is not a return tool, and its bear-market edge
+exists only with hindsight (see "Volatility targeting" below).
 
 This file is the source of truth for sequencing. Update it as phases complete or
 priorities change; don't let it go stale.
@@ -475,7 +477,8 @@ announcement move (−0.020). v3 therefore:
 - **is built in layers,** starting with layer 0: each sentence and table row is labelled
   boilerplate / template / edited / new against the company's previous 4 releases.
 
-Built: `research/release_text.py` (structure-preserving parser), `edgar_filings.py`
+Built: the structure-preserving release parser (first `research/release_text.py`, since
+2026-09-20 `trader/text/parse.py`), `edgar_filings.py`
 (`--html-only`, `--set midsmall`), `v3_layer0.py`, `v3_labels.py`, and `v3_prototype.py`
 (a cheap end-to-end pass on development data). **Exam set:** the S&P 400/600 releases,
 in their own `edgar_midsmall.db` / `v3_midsmall.db`, used once, after a pre-registration.
@@ -503,6 +506,30 @@ with the releases that could not be scored and why. It does not touch the live a
 and is not in `config/strategy.json`: it is accumulating the out-of-time record the gate
 will need. Turning it on later changes which account places the orders, nothing else.
 
+**On all 23,997 development releases (2026-09-21)** the reader improves (R² 0.0853 vs
+0.0716 from the surprise alone) but the long-only trade does not: the top 5% earns
+−0.051pp per trade (p=0.95) and a calendar-time alpha of −1.82%/yr (p=0.58). Results
+and the long-short probe: `PROJECT_STATE.md` §3, §5, §6.
+
+## Volatility targeting — a separate track (2026-09-22 → 2026-09-24)
+
+Scale exposure down when recent volatility is high and up when it is low, tested with
+pre-registered rules on data never used to design them (`research/prereg_voltarget*.md`).
+Full record: `PROJECT_STATE.md` §8d-8f.
+
+- **Seven pre-registered tests, one clean pass**: the S&P 500 1928-1992, and about 70% of
+  that is the Great Depression. The 17-country replication passed only on raw Sharpe,
+  which flatters a strategy that holds cash.
+- **What held everywhere:** drawdowns were smaller in 98% of 61 series; raw returns were
+  lower in 67%. It is insurance, not a return tool.
+- **Bear markets:** +17.7%/yr over buy-and-hold in bear markets dated with hindsight, but
+  −6.4%/yr and −7.5%/yr when a bear market has to be recognised in real time.
+- **Why it works when it does** (volatility persistent, high volatility followed by
+  losses) explains the results after the fact (r = −0.83) and forecasts nothing.
+
+Also in this stretch: the point-in-time universe repair (§8b) and backtest arithmetic
+shared in `research/mechanics.py` with a regression test for each of five errors (§8c).
+
 ## Phase 3 — Add breadth to the fusion layer
 
 Goal: a second signal that passes the gate, so fusion does real work.
@@ -524,7 +551,8 @@ Goal: a second signal that passes the gate, so fusion does real work.
 
 Not started until Phase 2 has run clean in paper trading for a meaningful stretch —
 given the tripwire's speed, measured in quarters, not weeks. The intended real stake is
-~$100. Will need Alpaca integration, compliance/tax considerations, and alerting.
+~$100. The Alpaca paper broker is built (`trader/alpaca.py`, off by default); still
+needs compliance/tax considerations and alerting.
 
 ## Working conventions
 

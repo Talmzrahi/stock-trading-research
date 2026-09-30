@@ -1,8 +1,10 @@
-# Project state — 2026-09-21
+# Project state — 2026-09-24
 
 A handoff for a fresh session. `CLAUDE.md` holds the standing rules and `ROADMAP.md` the
-phase-by-phase history; this file is the current picture, the evidence behind it, and the
-one direction worth exploring next (long-short, at the end).
+phase-by-phase history; this file is the current picture and the evidence behind it.
+Sections 1-7 cover the trading system and the text signal (to 2026-09-21); sections 8b-8f
+cover the universe repair, the shared backtest mechanics and the volatility-targeting work
+(2026-09-22 to 2026-09-24).
 
 ---
 
@@ -18,7 +20,10 @@ it beats simply holding SPY is not there yet.
 
 ---
 
-## 2. What is running right now
+## 2. What is running (as of 2026-09-21)
+
+By 2026-09-24 none of the scheduled runs after 09-21 had completed (`data/run_daily.log`),
+so the live account's last recorded close is still 09-17.
 
 | | Live account (`data/trader.db`) | Shadow account (`data/shadow.db`) |
 |---|---|---|
@@ -203,11 +208,11 @@ shorter ones. The per-trade decile spreads were never affected. Fixed in
 - **It is the best shape the signal has taken**, and the only one where the money is
   reachable. Market-neutral by construction: beta −0.00.
 - **It is still not significant**, on development data that has been looked at many times.
-  p=0.16 after a dozen prior tests is weak.
+  p=0.59 after a dozen prior tests is no evidence at all.
 - **The decile pattern is not monotone.** Decile 9 beats decile 10 (+0.60 vs +0.23), and
   decile 9 minus 1 is the strongest pair. A signal whose second-best bucket beats its best
   is a warning: either the extreme tail is different in kind, or this is noise.
-- **Low volatility flatters the Sharpe.** 4.2% volatility on a 1.5% return is a thin edge,
+- **Low volatility flatters the Sharpe.** 4.2% volatility on a 0.6% return is a thin edge,
   and costs were charged at 10bps a side plus 1%/yr borrow; both could be worse in practice.
 
 ### What would have to happen before it could trade
@@ -228,7 +233,7 @@ shorter ones. The per-trade decile spreads were never affected. Fixed in
 
 **The intended real stake is about $100, and you cannot short with $100.** A US margin
 account needs $2,000 minimum under Reg T before any short position is possible, and borrow
-plus margin interest eat a 1.5%/yr edge at small size. So long-short is a research
+plus margin interest eat a 0.6%/yr edge at small size. So long-short is a research
 direction and a paper-trading question for now, not a path to real money at this size. That
 is worth deciding deliberately rather than discovering after building shorting into the
 engine.
@@ -566,15 +571,16 @@ exposures reordered at random, not just zero.
    left running.
 4. **Expanding the universe does not buy the power we need — measured, 2026-09-22.**
    `research/sp1500_gate.py` pooled the S&P 500 and S&P 400/600 PEAD samples: 2,758 events
-   against 1,278, i.e. 2.7x. The gate's answer got *clearer*, not better: T1 +2.461pp
-   (p=0.013) but **T2 alpha +0.56%/yr, p=0.849, beta 1.40**. After market exposure there is
-   nothing there, and the pooled estimate is now tight enough to say so.
+   against 1,278, i.e. 2.7x. The gate's answer got *clearer*, not better: T1 +2.45pp
+   (p=0.014) but **T2 alpha +0.29%/yr, 95% CI [−5.5, +6.0], beta 1.39** (§3; the figures
+   first written here predated the 2026-09-22 correction in §8b). After market exposure
+   there is nothing there, and the pooled estimate is now tight enough to say so.
 
    The structural lesson matters more than the number. **Pooling added 2.7x the events and
    zero quarters** (65 → 65) and one month (196 → 197), because both halves span the same
    calendar. T1 clusters by quarter and T2 regresses monthly returns, so both are limited by
-   *calendar span*, not by how many stocks are in it. The T2 standard error fell only
-   4.19% → 2.93%/yr (1.43x) and the T1 standard error barely moved (1.048 → 0.965pp, 1.09x).
+   *calendar span*, not by how many stocks are in it. The T2 standard error fell only about
+   1.4x (roughly 4.0-4.2% → 2.9%/yr) and the T1 standard error barely moved (about 1.05-1.1x).
    More names diversify each month; they do not add independent months, and that saturates.
 
    So the earlier "~10x the universe would cut T2's SE to ~1.7%/yr" was **wrong**. On the
@@ -590,7 +596,6 @@ exposures reordered at random, not just zero.
 ## 10. Verifying any of this
 
 ```
-.venv\Scripts\python.exe -m unittest discover -s tests -t .     # 75 tests
 .venv\Scripts\python.exe -m unittest discover -s tests -t .     # 94 tests (19 are mechanics regressions)
 .venv\Scripts\python.exe -m trader.run_daily --dry-run          # full pipeline, saves nothing
 .venv\Scripts\python.exe research\inference_check.py            # the PEAD re-check (T0/T1/T2/T3)
@@ -601,7 +606,7 @@ exposures reordered at random, not just zero.
 .venv\Scripts\python.exe research\sp1500_gate.py              # the PEAD gate on the pooled S&P 1500
 .venv\Scripts\python.exe research\longshort_sim.py            # the shorting grid: signal x cutoff x horizon
 .venv\Scripts\python.exe research\voltarget_test.py           # the pre-registered vol-targeting test (FAIL)
-.venv\Scripts\python.exe research\voltarget_intl.py           # the international replication (PASS)
+.venv\Scripts\python.exe research\voltarget_intl.py           # the international replication (PASS on raw Sharpe only; FAIL on excess, §8e)
 .venv\Scripts\python.exe research\voltarget_multi.py          # the diversified book (construction)
 .venv\Scripts\python.exe research\voltarget_erc.py            # correlation-aware weighting (rejected)
 .venv\Scripts\python.exe research\voltarget_financing.py      # the financing curve (+1.7%/yr)

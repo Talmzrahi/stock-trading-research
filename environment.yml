@@ -1,18 +1,8 @@
 name: sentiment-assessment
 channels:
-  - pytorch
   - conda-forge
 dependencies:
-  - python=3.12
+  - python=3.14
   - pip
   - pip:
-      - finnhub-python
-      - lxml
-      - numpy
-      - pandas
-      - requests
-      - scipy
-      - statsmodels
-      - torch
-      - transformers
-      - yfinance
+      - -r requirements.txt

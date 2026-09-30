@@ -1,3 +1,8 @@
+SUPERSEDED: this output was produced on 2026-09-21, before the cost-sign fix of 2026-09-22
+(PROJECT_STATE.md §6 and §8c, error 4). Its portfolio section overstates the result:
+corrected, the book returns +0.58%/yr, Sharpe 0.14, p=0.59, alpha +0.62%/yr (p=0.55),
+9 of 16 years positive. The per-trade decile spreads were not affected by the bug.
+
 23,541 development releases, 2011-04-07 → 2026-06-18
 
 ── 60-session excess return vs SPY, by text-score decile ──
