@@ -64,7 +64,7 @@ trader/        the system (backtest and live share it)
 trader/text/   the earnings-release reader
 research/      ingestion, gates, pre-registrations, experiments
 config/        live parameters with their evidence, the text model, the tripwire band
-data_archive/  perishable data kept in git: index snapshots, earnings, reader outputs
+data_archive/  perishable data kept in git: index snapshots, reader outputs
 docs/          the findings write-up, its charts, and the commit map
 tests/         stdlib unittest
 scripts/       Windows Task Scheduler setup
@@ -90,7 +90,7 @@ refreshes prices into `data/research.db`.
 ## Notes
 
 - Paper trading only. Nothing here is investment advice.
-- The Finnhub news used in the first experiment is not included: Finnhub's terms forbid
-  redistributing it, so it was removed from the history ([data_archive/README.md](data_archive/README.md)).
+- Third-party data is not included: the Finnhub news used in the first experiment and the
+  Yahoo earnings file were removed from the history, because their terms restrict redistribution ([data_archive/README.md](data_archive/README.md)).
   Commit IDs changed as a result; [docs/COMMIT_MAP.md](docs/COMMIT_MAP.md) maps the old ones.
 - Built with Claude Code as a pair programmer; the commits are co-authored.
