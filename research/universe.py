@@ -47,7 +47,7 @@ SESSION = requests.Session()
 # Wikipedia's User-Agent policy asks tools to identify themselves and give a
 # means of contact; a generic browser string is what gets throttled first.
 SESSION.headers.update({"User-Agent": "PEAD-research/1.0 "
-                                      "(https://github.com/Talmzrahi/sentiment-arbitrage-snapshot-2026-09-24)"})
+                                      "(https://github.com/Talmzrahi/stock-trading-research)"})
 PAUSE   = 3.0          # between quarters; two requests each
 RETRIES = 4
 

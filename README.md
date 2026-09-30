@@ -1,7 +1,7 @@
-# Sentiment Arbitrage — a trading research system
+# Stock trading research
 
-An AI-assisted system for finding, testing and paper-trading stock-market signals, built on
-free data in 11 days (14–24 September 2026). It has three tracks: an earnings-surprise
+Code for finding, testing and paper-trading stock-market signals, built with an AI coding
+agent on free data in 11 days (14–24 September 2026). It has three tracks: an earnings-surprise
 strategy running on a paper account, language models reading 23,997 SEC earnings
 releases, and a century-long study of volatility targeting.
 
@@ -35,8 +35,15 @@ documentation cleanup on top.
 | Volatility targeting in bear markets | +17.7%/yr over buy-and-hold in bear markets dated with hindsight; −6.4% and −7.5%/yr when they must be recognised in real time |
 | The gate fed 1,000 coin-flip rules | 20 passed (best p=0.0009), which is why a broad search needs a stricter bar |
 
-Every number, with its caveats: [PROJECT_STATE.md](PROJECT_STATE.md). The history and the
-decisions behind it: [ROADMAP.md](ROADMAP.md).
+![With hindsight the model turns $1 into $88; in real time, $29](docs/charts/1-hindsight-vs-real-time-growth.png)
+
+The volatility-targeting result in one picture: knowing the bear markets in advance would
+have beaten the S&P 500 by 3.5 points a year; switching on a signal you could see at the
+time did not beat it at all.
+
+The write-up with all five charts: [docs/FINDINGS.md](docs/FINDINGS.md). Every number, with
+its caveats: [PROJECT_STATE.md](PROJECT_STATE.md). The history and the decisions behind it:
+[ROADMAP.md](ROADMAP.md).
 
 ## How results are checked
 
