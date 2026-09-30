@@ -257,14 +257,14 @@ and it either kills the idea or makes the engine work worth doing.
 | `research/design_sentiment_v3.md` | the v3 design, every decision and every measured result |
 | `research/prereg_*.md` | pre-registrations, committed before their tests ran |
 | `config/` | `strategy.json` (live parameters + evidence), `text_model.{json,npz}`, `tripwire_band.csv` |
-| `data_archive/` | committed: the scored sample, reader features, reports, the v1 news articles |
+| `data_archive/` | committed: the scored sample, reader features, reports (the v1 news articles were removed from the public history on 2026-09-30; see `data_archive/README.md`) |
 | `reports/` | daily reports (gitignored) |
 
 **Databases** (all gitignored, in `data/`):
 
 | File | Size | Contents | Reproducible? |
 |---|---|---|---|
-| `research.db` | 244 MB | prices, VIX, earnings, 41,569 scored news articles | prices/earnings yes; **the news articles no** (archived) |
+| `research.db` | 244 MB | prices, VIX, earnings, 41,569 scored news articles | prices/earnings yes; **the news articles no** (not in the public repo) |
 | `edgar.db` | 692 MB | 26,357 S&P 500 releases, raw HTML with structure | yes, hours |
 | `edgar_midsmall.db` | 363 MB | **the exam set**: 27,164 S&P 400/600 releases, text only | yes |
 | `v3.db` | 920 MB | layer 0 output, reaction labels, reader outputs, features | yes, ~9 h of compute |

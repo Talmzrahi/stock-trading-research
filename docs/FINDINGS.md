@@ -50,8 +50,8 @@ closes through t−1.
 
 ![The earnings strategy's edge shrank at every step](charts/5-earnings-strategy-edge-shrinking.png)
 
-The bars are the headline the project had at each stage (commits `b38916e`, `174fc1f`,
-`f734e42`), so they mix measures on purpose: read them as a story of shrinkage, not one
+The bars are the headline the project had at each stage (commits `d3de71f`, `b7bcc11`,
+`795245d`), so they mix measures on purpose: read them as a story of shrinkage, not one
 comparable series.
 
 ## 3. Reading earnings releases

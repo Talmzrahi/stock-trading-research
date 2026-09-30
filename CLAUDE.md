@@ -132,9 +132,11 @@ account.
 
 `data/research.db` (~183MB, gitignored) holds prices, VIX, earnings and 41,569 scored
 news articles. Prices/VIX/earnings are re-downloadable; **the news articles are not** —
-Finnhub's free window is a rolling ~12 months, so they age out permanently. They are
-archived to `data_archive/*.csv.gz` (committed); restore with
+Finnhub's free window is a rolling ~12 months, so they age out permanently. The other
+perishable tables are archived to `data_archive/*.csv.gz` (committed); restore with
 `python research/archive.py restore`, then rerun `research/ingest.py` for prices/VIX.
+The news archive was removed from this public repository's history on 2026-09-30, because
+Finnhub's terms forbid redistributing its data (`data_archive/README.md`).
 
 ## Conventions
 
